@@ -1,0 +1,39 @@
+# SOP 标准操作流程配置
+# 每个 SOP 定义了针对特定问题的标准化诊断步骤
+
+shop_them_no_call:
+  name: "商户没有召回"
+  description: "商户在推荐列表中没有被召回的问题诊断流程"
+  steps:
+    - "确认用户提供的商户ID和平台信息（美团mt/点评dp）"
+    - "使用check_low_star_merchant检查商户是否为零星商户（shop_star=0）"
+    - "如果是零星商户，告知用户该商户命中零星商户卡控，建议协助商户提升星级"
+    - "使用check_sensitive_merchant检查商户是否为软色情违规商户（risk_score>0.5或risk_score_v2=1）"
+    - "如果是软色情违规商户，告知用户该商户因违规内容被过滤"
+    - "如果商户状态正常，询问用户ID和访问时间，使用get_visit_record_by_userid查询访问记录"
+    - "使用traceId调用get_recall_chain分析召回链路，检查经纬度、业务场景配置等参数"
+    - "根据召回日志和OPT配置分析未召回原因，给出诊断结论和解决建议"
+
+play_game:
+  name: "玩游戏"
+  description: "示例SOP - 玩游戏场景"
+  steps:
+    - "确认用户想玩什么类型的游戏"
+    - "推荐合适的游戏选项"
+    - "提供游戏规则说明"
+
+email_querycontact:
+  name: "电子邮件查询联系人"
+  description: "示例SOP - 邮件联系人查询"
+  steps:
+    - "确认要查询的联系人信息"
+    - "在通讯录中搜索匹配的联系人"
+    - "返回联系人的邮箱地址"
+
+alarm_set:
+  name: "设置闹钟"
+  description: "示例SOP - 设置闹钟场景"
+  steps:
+    - "确认闹钟时间"
+    - "确认闹钟重复规则（每天/工作日/周末/单次）"
+    - "设置闹钟并确认"
