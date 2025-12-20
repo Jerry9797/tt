@@ -1,7 +1,7 @@
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct
 
-from config.llm import TongyiEmbedding
+from src.config.eb import TongyiEmbedding
 
 client = QdrantClient(
     host="23.91.97.241",   # 推荐用 host + port 而非 url（更清晰）

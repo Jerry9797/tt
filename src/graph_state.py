@@ -14,6 +14,7 @@ class AgentState(TypedDict):
     # 对query进行提取，查询FAQ
     faq_query: str
     faq_response: list[str]
+    need_clarification: bool
     # 意图
     intent: str
     # 是否命中SOP
