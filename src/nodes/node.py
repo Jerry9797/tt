@@ -4,13 +4,12 @@
 """
 import json
 import yaml
-from langchain.agents import create_agent
+from langgraph.checkpoint.memory import MemorySaver
 
 from src.config.llm import q_plus, q_intent, q_max
 from src.graph_state import AgentState, Plan
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.prompts import PromptTemplate
-from src.prompt.plan import planner_prompt_template
 from src.utils.qdrant_utils import qdrant_select
 from langchain_core.output_parsers import JsonOutputParser
 from langgraph.graph import END
@@ -69,100 +68,25 @@ def query_rewrite_node(state: AgentState):
         "keywords": ret.get("keywords", [])
     }
 
-def ask_user(state: AgentState):
+# ... (imports overhead)
+def ask_human(state: AgentState):
+    """
+    此节点作为中断锚点。
+    实际的问询交互发生在 API 层（Graph 暂停期间）。
+    当 Graph 恢复时，意味着用户已经回答了问题，
+    API 层会通过 update_state 将历史记录注入。
+    这个节点本身的逻辑只需要确保状态流转正常即可。
+    这里我们将 need_clarification 重置，尽管 query_rewrite 会重新评估。
+    """
+    return {"need_clarification": False}
 
-    pass
-
-# -------------------------nodes---------------------------------------
-
-def faq_retrieve_node(state: AgentState):
-    query_faq = state['faq_query']
-    results = qdrant_select(query_faq, collection_name="dz_channel_faq")
-    return {"faq_response": "\n".join(results)}
-
-# -------------------------nodes---------------------------------------
-intent_dict = {
-    "play_game": "玩游戏",
-    "email_querycontact": "电子邮件查询联系人",
-    "alarm_set": "设置闹钟",
-}
-
-def sop_match_node(state: AgentState):
-    """意图识别，是否命中SOP"""
-    query = state['query']
-    intent_string = json.dumps(intent_dict, ensure_ascii=False)
-
-    system_prompt = f"""You are Qwen, created by Alibaba Cloud. You are a helpful assistant. 
-    You should choose one tag from the tag list:
-    {intent_string}
-    Just reply with the chosen tag."""
-    messages = [
-        {'role': 'system', 'content': system_prompt},
-        {'role': 'user', 'content': query}
-    ]
-
-    response = q_intent.invoke(messages)
-    print()
-    if response.content:
-        return {"intent": response.content, "is_sop_matched": True}
-    return {"is_sop_matched": False}
-
-# -------------------------nodes---------------------------------------
-
-def sop_plan_node(state: AgentState):
-    is_sop_matched = state['is_sop_matched']
-    sop_name = state['intent']
-    if is_sop_matched:
-        sop_config = yaml.dump("")
-        plan = sop_config.get(sop_name)
-        return {"plan": plan}
-
-# -------------------------nodes---------------------------------------
-
-def planning_node(state: AgentState):
-    query = state['query']
-    plan_parser = JsonOutputParser(pydantic_object=Plan)
-    planner_prompt = PromptTemplate(
-        template=planner_prompt_template,
-        input_variables=["query"],
-        partial_variables={"format_instructions": plan_parser.get_format_instructions()},
-    )
-
-    chain = planner_prompt | q_max | JsonOutputParser()
-    result = chain.invoke({"query": query, "past_steps": ""})
-    return {"plan": result['steps'], "current_step": 0}
-
-# -------------------------nodes---------------------------------------
-
-def plan_executor_node(state: AgentState):
-    agent = create_agent(
-        model=q_plus,
-        tools=[],
-        system_prompt="你是数学助手"
-    )
-    # result = agent.invoke({"messages": ["12 和 9 的乘积是多少？"]})
-    # print(result)
-    return {}
-
-# -------------------------nodes---------------------------------------
-
-def replan_node(state: AgentState):
-    pass
-
-# -------------------------nodes---------------------------------------
-def human_clarification(state: AgentState):
-    print("--- ✋ 等待人类输入 (此节点其实不会被真正执行，因为在它之前就暂停了) ---")
-    pass
-# -------------------------nodes---------------------------------------
-# -------------------------nodes---------------------------------------
-# -------------------------nodes---------------------------------------
-
-
+# ... (other nodes)
 
 def build_graph():
     from langgraph.graph import StateGraph
     graph = StateGraph(AgentState)
     graph.add_node("query_rewrite_node", query_rewrite_node)
+    graph.add_node("ask_human", ask_human) 
     graph.add_node("faq_retrieve_node", faq_retrieve_node)
     graph.add_node("sop_match_node", sop_match_node)
     graph.add_node("planning_node", planning_node)
@@ -174,27 +98,29 @@ def build_graph():
 
     # 是否澄清
     def route_check_clarification(state: AgentState):
-        need_clarification = state.get("need_clarification")
-        if need_clarification:
+        if state.get("need_clarification"):
             return "ask_human"
         return "continue"
 
-    # 根据重写的结果，如果需要澄清意图，则中断，想用户提问
-    graph.add_conditional_edges("query_rewrite_node", route_check_clarification,
-                   {"end": END, "continue": "faq_retrieve_node"})
+    graph.add_conditional_edges(
+        "query_rewrite_node",
+        route_check_clarification,
+        {
+            "ask_human": "ask_human",
+            "continue": "faq_retrieve_node"
+        }
+    )
 
-    graph.add_edge("query_rewrite_node", "faq_retrieve_node")
+    # 回环：用户回答后（状态已更新），流程回到重写节点重新判断
+    graph.add_edge("ask_human", "query_rewrite_node")
+
     graph.add_edge("faq_retrieve_node", "sop_match_node")
     graph.add_edge("sop_match_node", "planning_node")
     graph.add_edge("planning_node", "plan_executor_node")
     graph.add_edge("planning_node", "replan_node")
-
-    from langgraph.checkpoint.memory import MemorySaver
-    config = {"configurable": {"thread_id": "session_1"}}
-    snapshot = graph.get_state(config)
-    print(f"当前暂停在: {snapshot.next}")
-
+    
     checkpointer = MemorySaver()
+    # 关键修改：设置 interrupt_before
     return graph.compile(checkpointer=checkpointer, interrupt_before=["ask_human"])
 
 if __name__ == '__main__':
