@@ -6,6 +6,7 @@ import json
 import yaml
 from datetime import time
 from langchain.agents import create_agent
+from langchain_core.messages import SystemMessage, HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
 
 from src.config.llm import q_plus, q_intent, q_max
@@ -22,31 +23,47 @@ from langgraph.graph import END
 
 query_rewrite_prompt = ChatPromptTemplate.from_template(
     """
-    你是一个 Query 预处理专家。你的任务是对用户的输入进行改写、关键词提取，并在意图不明确时进行追问。
+    # 角色定义
+    你是一个【美团服务零售频道页后端问题定位专家】。
+    你负责导购链路 API 层频道页的推荐列表模块（包含内容、商户、商品列表等）。
+    你擅长使用查询工具记录、分析后端日志、进行代码提取和处理分析，针对线上展示 case 进行排查。
 
-    上下文信息：
+    # 任务说明
+    你的任务是对用户输入的排查请求进行 Query 改写和关键词提取。
+
+    # 上下文信息：
     {history}
 
-    当前输入 Query: {query}
+    # 当前输入 Query: 
+    {query}
 
-    任务清单：
-    1. **结合上下文理解意图**：如果当前 Query 依赖上下文（如“它也是吗”、“那个多少钱”），请结合历史信息补全语义。
-    2. **意图澄清**：如果结合上下文后意图依然**极度不明确**（例如用户仅输入一个毫无背景的词，如“你好”、“在吗”且无上下文，或者指代不明无法解析），请生成一个澄清问题来询问用户意图。
-       - 如果需要澄清，设置 `need_clarification` 为 true，并在 `clarifying_question` 中填写问题。
-       - 如果不需要澄清，设置 `need_clarification` 为 false，`clarifying_question` 为空字符串，并继续执行改写任务。
-    3. **错别字纠正**：发现并修正输入中的错别字。
-    4. **语气词移除**：去掉无语义的语气词。
-    5. **停用词移除**：去掉无贡献的停用词。
-    6. **关键词提取**：提取核心名词或动宾短语。
+    # 处理规则
+    1. **结合业务背景补全语义**：
+       - 用户输入通常与排错相关，如“它没出”应结合上下文补全为“指定的商户/商品在推荐列表中未展示”。
+       - 识别专业术语：API层、猜你喜欢、商户列表、商品列表、外部调用等。
+    2. **意图澄清 (慎用)**：
+       - **改写优先原则**：只要输入在美团后端排错背景下能产生合理推断，就进行改写补全，不要轻易追问。
+       - 只有当输入完全无法理解（如“啊吧啊吧”、纯乱码）或严重缺乏定位对象（且无历史记录）时，才设置 `need_clarification` 为 true。
+    3. **Query 改写**：
+       - 将口语化的排查请求转为规范的后端定位描述。
+       - 补全指代对象（如“这条请求” -> “API层后端请求”）。
+    4. **关键词提取**：
+       - 提取核心实体名、接口名、错误代码或业务模块名。
 
-    输出格式必须为 JSON：
+    # Few-shot 示例
+    - 用户输入：“它怎么没出” -> 改写：“[上下文推断] 为什么目标实体（商户/内容/商品）在推荐列表中没有展示？”
+    - 用户输入：“查下日志” -> 改写：“查询该 case 对应调度链路的后端日志以分析定位问题。”
+    - 用户输入：“外部请求返回啥” -> 改写：“获取当前 case 中外部团队接口调用的原始请求和返回报文。”
+    - 用户输入：“代码逻辑有问题” -> 改写：“分析后端核心逻辑代码，查找可能导致线上展示错误的 BUG 并给出建议。”
+
+    # 输出格式 (JSON)
     {{
         "need_clarification": true/false,
-        "clarifying_question": "如需澄清，在此填写问题",
-        "rewritten_query": "改写后的 query (如需澄清，此项可为空)",
+        "clarifying_question": "如需澄清，在此简短提问。否则为空。",
+        "rewritten_query": "改写后的规范排查描述",
         "keywords": ["关键词1", "关键词2", ...]
     }}
-    直接输出 JSON 结果，不需要任何解释。
+    只需输出 JSON，禁止任何解释。
     """
 )
 
@@ -89,15 +106,13 @@ def ask_human(state: AgentState):
 def faq_retrieve_node(state: AgentState):
     query_faq = state['faq_query']
     results = qdrant_select(query_faq, collection_name="dz_channel_faq")
-    return {"faq_response": "\n".join(results)}
+    return {"faq_response": "\n".join(results.points)}
 
 # -------------------------nodes---------------------------------------
 intent_dict = {
-    "play_game": "玩游戏",
-    "email_querycontact": "电子邮件查询联系人",
-    "alarm_set": "设置闹钟",
+    "shop_them_not_recall": "商户未召回",
+    "shop_them_info_missing": "商户消息缺失",
     "refund_query": "查询退款",
-    "order_check": "订单查询"
 }
 
 def sop_match_node(state: AgentState):
@@ -110,8 +125,8 @@ def sop_match_node(state: AgentState):
     {intent_string}
     Just reply with the chosen tag. If none match, reply 'Other'."""
     messages = [
-        {'role': 'system', 'content': system_prompt},
-        {'role': 'user', 'content': query}
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=query),
     ]
 
     response = q_intent.invoke(messages)
