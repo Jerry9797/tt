@@ -12,7 +12,7 @@ from src.config.llm import q_plus, q_intent, q_max
 from src.graph_state import AgentState, Plan
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.prompts import PromptTemplate
-from src.prompt.plan import planner_prompt_template
+# from src.prompt.plan import planner_prompt_template
 from src.utils.qdrant_utils import qdrant_select
 from langchain_core.output_parsers import JsonOutputParser
 from langgraph.graph import END
@@ -51,6 +51,7 @@ query_rewrite_prompt = ChatPromptTemplate.from_template(
 )
 
 def query_rewrite_node(state: AgentState):
+    print("query_rewrite_node 开始运行...")
     # 获取历史消息并格式化
     history = state.get('messages', [])
     history_str = "\n".join([f"{msg.type}: {msg.content}" for msg in history[:-1]]) if history else ""
@@ -125,7 +126,7 @@ def planning_node(state: AgentState):
     query = state['query']
     plan_parser = JsonOutputParser(pydantic_object=Plan)
     planner_prompt = PromptTemplate(
-        template=planner_prompt_template,
+        template="planner_prompt_template",
         input_variables=["query"],
         partial_variables={"format_instructions": plan_parser.get_format_instructions()},
     )
