@@ -12,6 +12,7 @@ from src.config.llm import q_plus, q_intent, q_max
 from src.graph_state import AgentState, Plan
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.prompts import PromptTemplate
+from src.prompt.plan import planner_prompt_template
 from src.utils.qdrant_utils import qdrant_select
 from langchain_core.output_parsers import JsonOutputParser
 from langgraph.graph import END
@@ -82,7 +83,67 @@ def ask_human(state: AgentState):
     """
     return {"need_clarification": False}
 
-# ... (other nodes)
+# -------------------------nodes---------------------------------------
+
+def faq_retrieve_node(state: AgentState):
+    query_faq = state['faq_query']
+    results = qdrant_select(query_faq, collection_name="dz_channel_faq")
+    return {"faq_response": "\n".join(results)}
+
+# -------------------------nodes---------------------------------------
+intent_dict = {
+    "play_game": "玩游戏",
+    "email_querycontact": "电子邮件查询联系人",
+    "alarm_set": "设置闹钟",
+    "refund_query": "查询退款",
+    "order_check": "订单查询"
+}
+
+def sop_match_node(state: AgentState):
+    """意图识别，是否命中SOP"""
+    query = state['query']
+    intent_string = json.dumps(intent_dict, ensure_ascii=False)
+
+    system_prompt = f"""You are Qwen, created by Alibaba Cloud. You are a helpful assistant. 
+    You should choose one tag from the tag list:
+    {intent_string}
+    Just reply with the chosen tag. If none match, reply 'Other'."""
+    messages = [
+        {'role': 'system', 'content': system_prompt},
+        {'role': 'user', 'content': query}
+    ]
+
+    response = q_intent.invoke(messages)
+    
+    if response.content and response.content not in ["Other", "None"]:
+        return {"intent": response.content, "is_sop_matched": True}
+    return {"is_sop_matched": False}
+
+# -------------------------nodes---------------------------------------
+
+def planning_node(state: AgentState):
+    query = state['query']
+    plan_parser = JsonOutputParser(pydantic_object=Plan)
+    planner_prompt = PromptTemplate(
+        template=planner_prompt_template,
+        input_variables=["query"],
+        partial_variables={"format_instructions": plan_parser.get_format_instructions()},
+    )
+
+    chain = planner_prompt | q_max | JsonOutputParser()
+    result = chain.invoke({"query": query, "past_steps": ""})
+    return {"plan": result.get('steps', []), "current_step": 0}
+
+# -------------------------nodes---------------------------------------
+
+def plan_executor_node(state: AgentState):
+    # 此处为示例占位，实际需根据 plan 执行
+    return {"completed_steps": ["executed_step"]}
+
+# -------------------------nodes---------------------------------------
+
+def replan_node(state: AgentState):
+    pass
 
 def build_graph():
     from langgraph.graph import StateGraph
