@@ -1,10 +1,15 @@
 import streamlit as st
-import requests
 import uuid
 import json
+import sys
+import asyncio
+from pathlib import Path
 
-# 配置 API 地址
-API_URL = "http://localhost:8000/chat"
+# 将项目根目录添加到 sys.path
+project_root = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(project_root))
+
+from src.api.app import chat, ChatRequest
 
 st.set_page_config(page_title="TT Assistant Debugger", layout="wide")
 
@@ -43,68 +48,66 @@ if prompt := st.chat_input("Input your query..."):
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # 2. 准备请求 Payload
-    payload = {
-        "history": st.session_state.messages[:-1], # 传递除了当前这条之外的历史
-        "thread_id": st.session_state.thread_id
-    }
-
-    if st.session_state.waiting_for_clarification:
-        # 如果处于等待澄清状态，发送 resume_input
-        payload["resume_input"] = prompt
-        # Query 字段在模型里是必填的，虽然 resume 时可能不用，但为了过校验随便填一个或者填prompt
-        payload["query"] = prompt 
-    else:
-        # 正常请求
-        payload["query"] = prompt
-
-    # 3. 发送请求
+    # 2. 调用 API 的 chat 方法
     with st.chat_message("assistant"):
         message_placeholder = st.empty()
         message_placeholder.markdown("Thinking...")
         
         try:
-            response = requests.post(API_URL, json=payload)
-            if response.status_code == 200:
-                data = response.json()
-                
-                # 更新状态标志
-                if data.get("status") == "need_clarification":
-                    st.session_state.waiting_for_clarification = True
-                    reply_text = f"**[需要澄清]** {data.get('response')}"
-                else:
-                    st.session_state.waiting_for_clarification = False
-                    # 组合展示结果
-                    reply_parts = []
-                    if data.get("response"):
-                        # 如果有中间响应（比如澄清后的问题回显，或者其他）
-                        reply_parts.append(f"{data.get('response')}")
-                    
-                    if data.get("faq_response"):
-                        reply_parts.append(f"**FAQ Answer:**\n{data.get('faq_response')}")
-                    
-                    if data.get("plan"):
-                        plan_str = "\n".join([f"- {step}" for step in data.get("plan")])
-                        reply_parts.append(f"**Plan:**\n{plan_str}")
-                    
-                    if data.get("intent"):
-                         reply_parts.append(f"**Intent:** `{data.get('intent')}`")
-
-                    # 如果没有内容，兜底
-                    if not reply_parts:
-                        reply_text = f"Response: {json.dumps(data, ensure_ascii=False, indent=2)}"
-                    else:
-                        reply_text = "\n\n---\n\n".join(reply_parts)
-
-                message_placeholder.markdown(reply_text)
-                st.session_state.messages.append({"role": "assistant", "content": reply_text})
-                
+            # 构造请求对象
+            request_data = {
+                "thread_id": st.session_state.thread_id,
+                "history": [] # 历史消息通常在第一次请求时可选，Graph 内部有持久化
+            }
+            
+            if st.session_state.waiting_for_clarification:
+                request_data["resume_input"] = prompt
             else:
-                error_msg = f"Error: {response.status_code} - {response.text}"
-                message_placeholder.error(error_msg)
-                st.session_state.messages.append({"role": "assistant", "content": error_msg})
+                request_data["query"] = prompt
+                # 仅在第一次或特殊情况下传递前端历史，这里保持简单
+                frontend_history = []
+                for msg in st.session_state.messages[:-1]:
+                    role = "user" if msg["role"] == "user" else "assistant"
+                    frontend_history.append({"role": role, "content": msg["content"]})
+                request_data["history"] = frontend_history
 
+            chat_request = ChatRequest(**request_data)
+            
+            # 直接调用 API 内部的 chat 函数 (async)
+            # 使用 asyncio.run 在同步环境中运行异步函数
+            result = asyncio.run(chat(chat_request))
+            
+            # 3. 处理响应
+            if result.status == "need_clarification":
+                st.session_state.waiting_for_clarification = True
+                reply_text = f"**[需要澄清]** {result.response}"
+            else:
+                st.session_state.waiting_for_clarification = False
+                reply_parts = []
+                
+                if result.response:
+                    reply_parts.append(f"{result.response}")
+                
+                if result.faq_response:
+                    reply_parts.append(f"**FAQ Answer:**\n{result.faq_response}")
+                
+                if result.plan:
+                    plan_str = "\n".join([f"- {step}" for step in result.plan])
+                    reply_parts.append(f"**Plan:**\n{plan_str}")
+                
+                if result.intent:
+                    reply_parts.append(f"**Intent:** `{result.intent}`")
+                
+                if not reply_parts:
+                    reply_text = f"Result: {result.json()}"
+                else:
+                    reply_text = "\n\n---\n\n".join(reply_parts)
+            
+            message_placeholder.markdown(reply_text)
+            st.session_state.messages.append({"role": "assistant", "content": reply_text})
+            
         except Exception as e:
-            error_msg = f"Connection failed: {str(e)}"
+            import traceback
+            error_msg = f"Error: {str(e)}\n\n```\n{traceback.format_exc()}\n```"
             message_placeholder.error(error_msg)
             st.session_state.messages.append({"role": "assistant", "content": error_msg})

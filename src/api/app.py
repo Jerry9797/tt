@@ -40,6 +40,7 @@ async def chat(request: ChatRequest):
 
         # 1. 处理恢复逻辑
         if request.resume_input:
+            print("中断恢复...")
             # 获取当前状态
             state_snapshot = graph.get_state(config)
             
@@ -51,7 +52,7 @@ async def chat(request: ChatRequest):
                 AIMessage(content=previous_question or ""),
                 HumanMessage(content=request.resume_input)
             ]
-            
+            print("messages...:", new_messages)
             # 更新状态: 将新消息追加到 messages 列表
             graph.update_state(config, {"messages": new_messages})
             
@@ -59,6 +60,7 @@ async def chat(request: ChatRequest):
             result = graph.invoke(None, config=config)
             
         else:
+            print("TT running...")
             # 2. 处理新请求
             initial_state = AgentState()
             initial_state['query'] = request.query
