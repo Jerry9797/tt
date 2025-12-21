@@ -6,7 +6,9 @@
   <component name="ChangeListManager">
     <list default="true" id="7a7922d2-7fae-4b59-9863-f2cfc34f36ac" name="Changes" comment="feature:add code">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/api/app.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/api/app.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/nodes/node.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/nodes/node.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/prompt/plan.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/prompt/plan.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -39,6 +41,8 @@
     <setting file="file://$PROJECT_DIR$/.venv/lib/python3.13/site-packages/fastembed/text/onnx_text_model.py" root0="SKIP_INSPECTION" />
     <setting file="file://$PROJECT_DIR$/.venv/lib/python3.13/site-packages/langchain/agents/factory.py" root0="SKIP_INSPECTION" />
     <setting file="file://$PROJECT_DIR$/.venv/lib/python3.13/site-packages/langchain/agents/structured_output.py" root0="SKIP_INSPECTION" />
+    <setting file="file://$PROJECT_DIR$/.venv/lib/python3.13/site-packages/langchain_core/messages/human.py" root0="SKIP_INSPECTION" />
+    <setting file="file://$PROJECT_DIR$/.venv/lib/python3.13/site-packages/langgraph/_internal/_runnable.py" root0="SKIP_INSPECTION" />
     <setting file="file://$PROJECT_DIR$/.venv/lib/python3.13/site-packages/langgraph/pregel/main.py" root0="SKIP_INSPECTION" />
     <setting file="file://$PROJECT_DIR$/.venv/lib/python3.13/site-packages/qdrant_client/fastembed_common.py" root0="SKIP_INSPECTION" />
     <setting file="file://$PROJECT_DIR$/.venv/lib/python3.13/site-packages/qdrant_client/http/models/models.py" root0="SKIP_INSPECTION" />
@@ -278,7 +282,15 @@
       <option name="project" value="LOCAL" />
       <updated>1766244603179</updated>
     </task>
-    <option name="localTasksCounter" value="6" />
+    <task id="LOCAL-00006" summary="feature:add code">
+      <option name="closed" value="true" />
+      <created>1766247591990</created>
+      <option name="number" value="00006" />
+      <option name="presentableId" value="LOCAL-00006" />
+      <option name="project" value="LOCAL" />
+      <updated>1766247591990</updated>
+    </task>
+    <option name="localTasksCounter" value="7" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -323,23 +335,13 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/src/nodes/node.py</url>
-          <line>119</line>
-          <option name="timeStamp" value="10" />
+          <line>73</line>
+          <option name="timeStamp" value="29" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/src/nodes/node.py</url>
-          <line>107</line>
-          <option name="timeStamp" value="11" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/src/nodes/node.py</url>
-          <line>131</line>
-          <option name="timeStamp" value="12" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/src/nodes/node.py</url>
-          <line>140</line>
-          <option name="timeStamp" value="13" />
+          <line>104</line>
+          <option name="timeStamp" value="30" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>
@@ -348,7 +350,7 @@
     <SUITE FILE_PATH="coverage/tt$query_rewrite__1_.coverage" NAME="node Coverage Results" MODIFIED="1765121624996" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/src" />
     <SUITE FILE_PATH="coverage/tt$node.coverage" NAME="node Coverage Results" MODIFIED="1766216906691" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/src" />
     <SUITE FILE_PATH="coverage/tt$qdrant.coverage" NAME="创建qdrant Coverage Results" MODIFIED="1764963063836" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/脚本" />
-    <SUITE FILE_PATH="coverage/tt$streamlit.coverage" NAME="streamlit Coverage Results" MODIFIED="1766246202793" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/tt$streamlit.coverage" NAME="streamlit Coverage Results" MODIFIED="1766287840808" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/tt$query_rewrite.coverage" NAME="query_rewrite Coverage Results" MODIFIED="1764968490462" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/src/node" />
   </component>
 </project>

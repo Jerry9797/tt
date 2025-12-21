@@ -3,17 +3,20 @@
 对输入的文件进行修正、关键词替换、去除停用词
 """
 import json
+from typing import Literal, Dict, Any
+
 import yaml
 from datetime import time
 from langchain.agents import create_agent
-from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.types import interrupt, Command
 
 from src.config.llm import q_plus, q_intent, q_max
 from src.graph_state import AgentState, Plan
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.prompts import PromptTemplate
-# from src.prompt.plan import planner_prompt_template
+from src.prompt.plan import planner_prompt_template
 from src.utils.qdrant_utils import qdrant_select
 from langchain_core.output_parsers import JsonOutputParser
 from langgraph.graph import END
@@ -69,37 +72,51 @@ query_rewrite_prompt = ChatPromptTemplate.from_template(
 
 def query_rewrite_node(state: AgentState):
     print("query_rewrite_node 开始运行...")
-    # 获取历史消息并格式化
+    query = state['query']
     history = state.get('messages', [])
-    history_str = "\n".join([f"{msg.type}: {msg.content}" for msg in history[:-1]]) if history else ""
+    history_str = "\n".join([f"{msg.type}: {msg.content}" for msg in history]) if history else ""
+    
+    print(f"DEBUG: [query_rewrite] History length: {len(history_str)}")
+    print(f"DEBUG: [query_rewrite] Current History Msg Count: {len(history)}")
 
     chain = query_rewrite_prompt | q_plus | JsonOutputParser()
-    ret = chain.invoke({"query": state['query'], "history": history_str})
+    ret = chain.invoke({"query": query, "history": history_str})
 
     if ret.get("need_clarification"):
-        return {
+        print(f"需要澄清: {ret.get('clarifying_question')}")
+        return Command(goto="ask_human", update={
             "need_clarification": ret.get("need_clarification"),
             "response": ret.get("clarifying_question"),
-            "faq_query": "", # 阻断后续检索
+            "faq_query": "", 
             "keywords": []
-        }
+        })
 
     return {
-        "faq_query": ret.get("rewritten_query", state['query']),
+        "faq_query": ret.get("rewritten_query", query),
         "keywords": ret.get("keywords", [])
     }
 
-# ... (imports overhead)
 def ask_human(state: AgentState):
     """
-    此节点作为中断锚点。
-    实际的问询交互发生在 API 层（Graph 暂停期间）。
-    当 Graph 恢复时，意味着用户已经回答了问题，
-    API 层会通过 update_state 将历史记录注入。
-    这个节点本身的逻辑只需要确保状态流转正常即可。
-    这里我们将 need_clarification 重置，尽管 query_rewrite 会重新评估。
+    负责处理澄清交互的中断节点。
     """
-    return {"need_clarification": False}
+    question = state.get("response")
+    # 挂起执行，等待用户输入
+    user_response = interrupt(question)
+    
+    print(f"DEBUG: [ask_human] 收到用户回复: {user_response}")
+    
+    # 构造新的消息记录
+    new_messages = [
+        AIMessage(content=question),
+        HumanMessage(content=user_response)
+    ]
+    
+    # 更新状态并跳转回重写节点
+    return Command(
+        goto="query_rewrite_node", 
+        update={"messages": new_messages}
+    )
 
 # -------------------------nodes---------------------------------------
 
@@ -117,7 +134,7 @@ intent_dict = {
 
 def sop_match_node(state: AgentState):
     """意图识别，是否命中SOP"""
-    query = state['query']
+    faq_query = state['faq_query']
     intent_string = json.dumps(intent_dict, ensure_ascii=False)
 
     system_prompt = f"""You are Qwen, created by Alibaba Cloud. You are a helpful assistant. 
@@ -126,7 +143,7 @@ def sop_match_node(state: AgentState):
     Just reply with the chosen tag. If none match, reply 'Other'."""
     messages = [
         SystemMessage(content=system_prompt),
-        HumanMessage(content=query),
+        HumanMessage(content=faq_query),
     ]
 
     response = q_intent.invoke(messages)
@@ -138,16 +155,16 @@ def sop_match_node(state: AgentState):
 # -------------------------nodes---------------------------------------
 
 def planning_node(state: AgentState):
-    query = state['query']
+    faq_query = state['faq_query']
     plan_parser = JsonOutputParser(pydantic_object=Plan)
     planner_prompt = PromptTemplate(
-        template="planner_prompt_template",
+        template=planner_prompt_template,
         input_variables=["query"],
         partial_variables={"format_instructions": plan_parser.get_format_instructions()},
     )
 
     chain = planner_prompt | q_max | JsonOutputParser()
-    result = chain.invoke({"query": query, "past_steps": ""})
+    result = chain.invoke({"query": faq_query, "past_steps": ""})
     return {"plan": result.get('steps', []), "current_step": 0}
 
 # -------------------------nodes---------------------------------------
@@ -166,6 +183,7 @@ def build_graph():
     graph = StateGraph(AgentState)
     graph.add_node("query_rewrite_node", query_rewrite_node)
     graph.add_node("ask_human", ask_human) 
+    
     graph.add_node("faq_retrieve_node", faq_retrieve_node)
     graph.add_node("sop_match_node", sop_match_node)
     graph.add_node("planning_node", planning_node)
@@ -175,32 +193,17 @@ def build_graph():
     # edge
     graph.set_entry_point("query_rewrite_node")
 
-    # 是否澄清
-    def route_check_clarification(state: AgentState):
-        if state.get("need_clarification"):
-            return "ask_human"
-        return "continue"
-
-    graph.add_conditional_edges(
-        "query_rewrite_node",
-        route_check_clarification,
-        {
-            "ask_human": "ask_human",
-            "continue": "faq_retrieve_node"
-        }
-    )
-
-    # 回环：用户回答后（状态已更新），流程回到重写节点重新判断
-    graph.add_edge("ask_human", "query_rewrite_node")
-
+    # query_rewrite_node 默认连向 faq_retrieve_node
+    # 跳转到 ask_human 的边通过 Command 动态处理
+    graph.add_edge("query_rewrite_node", "faq_retrieve_node")
+    
     graph.add_edge("faq_retrieve_node", "sop_match_node")
     graph.add_edge("sop_match_node", "planning_node")
     graph.add_edge("planning_node", "plan_executor_node")
     graph.add_edge("planning_node", "replan_node")
     
     checkpointer = MemorySaver()
-    # 关键修改：设置 interrupt_before
-    return graph.compile(checkpointer=checkpointer, interrupt_before=["ask_human"])
+    return graph.compile(checkpointer=checkpointer)
 
 if __name__ == '__main__':
     state = AgentState()
