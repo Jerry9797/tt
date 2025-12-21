@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException, Request
+from langgraph.types import Command
 from pydantic import BaseModel
 from typing import List, Optional, Any
 
@@ -33,31 +34,23 @@ class ChatResponse(BaseModel):
 # Initialize graph
 graph = build_graph()
 
+from langgraph.errors import GraphInterrupt
+
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     try:
         config = {"configurable": {"thread_id": request.thread_id or "default_thread"}}
+        result = {} # Initialize result
 
         # 1. 处理恢复逻辑
         if request.resume_input:
-            print("中断恢复...")
-            # 获取当前状态
-            state_snapshot = graph.get_state(config)
-            
-            # 从状态中获取之前生成的澄清问题 (作为 AIMessage)
-            previous_question = state_snapshot.values.get("response")
-            
-            # 构造新的对话记录: AI的提问 + 用户的回答
-            new_messages = [
-                AIMessage(content=previous_question or ""),
-                HumanMessage(content=request.resume_input)
-            ]
-            print("messages...:", new_messages)
-            # 更新状态: 将新消息追加到 messages 列表
-            graph.update_state(config, {"messages": new_messages})
-            
-            # 恢复执行 (输入为 None，因为状态已更新)
-            result = graph.invoke(None, config=config)
+            print(f"中断恢复: {request.resume_input}")
+            # 使用 Command 恢复中断
+            # 注意: invoke 可能会因为再次中断而抛出 GraphInterrupt 或直接返回
+            try:
+                result = graph.invoke(Command(resume=request.resume_input), config=config)
+            except GraphInterrupt:
+                print("Graph execution interrupted (resume).")
             
         else:
             print("TT running...")
@@ -68,7 +61,7 @@ async def chat(request: ChatRequest):
             initial_state['current_step'] = 0
             initial_state['past_steps'] = []
             
-            # 处理历史消息 (History 仅在第一次请求时需要在 API 层处理，后续都在 state 中)
+            # 处理历史消息
             messages = []
             for msg in request.history:
                 if msg.get('role') == 'user':
@@ -78,21 +71,30 @@ async def chat(request: ChatRequest):
             initial_state['messages'] = messages
 
             # 执行 Graph
-            result = graph.invoke(initial_state, config=config)
+            try:
+                result = graph.invoke(initial_state, config=config)
+            except GraphInterrupt:
+                print("Graph execution interrupted (new request).")
 
-        # 3. 检查是否中断 (interrupt_before 生效)
+        # 3. 检查是否中断 (Generic Interrupt)
         state_snapshot = graph.get_state(config)
-        # 检查下一个要执行的节点是否是 ask_human
-        if state_snapshot.next and "ask_human" in state_snapshot.next:
-             # 获取澄清问题 (由 query_rewrite_node 设置在 response 字段)
-             question = state_snapshot.values.get("response")
-             return ChatResponse(
+        tasks = list(state_snapshot.tasks)
+        if tasks and tasks[0].interrupts:
+            # 获取中断信息
+            interrupt_value = tasks[0].interrupts[0].value
+            question = interrupt_value if isinstance(interrupt_value, str) else interrupt_value.get("question", str(interrupt_value))
+            
+            return ChatResponse(
                 response=question,
                 thread_id=config["configurable"]["thread_id"],
                 status="need_clarification"
-             )
+            )
 
-        # 4. 正常结束
+        # 4. 正常结束 (只有在没有中断时才返回结果)
+        # 如果 result 为空且没有中断，说明出现了异常情况
+        if result is None:
+            result = {}
+
         return ChatResponse(
             query=result.get("faq_query", request.query), 
             intent=result.get("intent"),
