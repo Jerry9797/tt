@@ -54,7 +54,7 @@ def build_graph():
 
     graph.add_conditional_edges("replan_node", router_replan,
                                 {
-                                    "plan_executor_node": plan_executor_node,
+                                    "plan_executor_node": "plan_executor_node",
                                     "end": END,
                                 })
     

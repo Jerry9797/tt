@@ -1,14 +1,26 @@
 import json
+
+import yaml
+import os
+
 from langchain_core.messages import SystemMessage, HumanMessage
+
 from src.config.llm import q_intent
 from src.graph_state import AgentState
 
-intent_dict = {
-    "shop_them_not_recall": "商户未召回",
-    "shop_them_info_missing": "商户消息缺失",
-    "user_access_record": "用户访问记录",
-    "restore_user_scene": "还原用户现场",
-}
+# 加载 SOP 配置
+config_path = os.path.join(os.path.dirname(__file__), "../config/sop_config.yaml")
+
+try:
+    with open(config_path, 'r', encoding='utf-8') as f:
+        sop_config = yaml.safe_load(f)
+except Exception as e:
+    print(f"Warning: Failed to load sop_config.yaml: {e}")
+    sop_config = {}
+
+# 动态生成 intent_dict 和 sop_plans
+intent_dict = {key: val["name"] for key, val in sop_config.items()}
+sop_plans = {key: val["steps"] for key, val in sop_config.items()}
 
 def sop_match_node(state: AgentState):
     """意图识别，是否命中SOP"""
@@ -25,7 +37,16 @@ def sop_match_node(state: AgentState):
     ]
 
     response = q_intent.invoke(messages)
+    intent = response.content
     
-    if response.content and response.content not in ["Other", "None"]:
-        return {"intent": response.content, "is_sop_matched": True}
+    if intent and intent in intent_dict:
+        # 命中 SOP，注入预定义计划
+        plan = sop_plans.get(intent, [])
+        return {
+            "intent": intent, 
+            "is_sop_matched": True,
+            "plan": plan,
+            "current_step": 0
+        }
+    
     return {"is_sop_matched": False}

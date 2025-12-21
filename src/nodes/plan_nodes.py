@@ -1,3 +1,4 @@
+from langchain.agents import create_agent
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.prompts import PromptTemplate
 
@@ -19,8 +20,28 @@ def planning_node(state: AgentState):
     return {"plan": result.get('steps', []), "current_step": 0}
 
 def plan_executor_node(state: AgentState):
-    # 此处为示例占位，实际需根据 plan 执行
-    return {"completed_steps": ["executed_step"]}
+    plan = state.get("plan", [])
+    current_step = state.get("current_step", 0)
+    
+    if current_step < len(plan):
+        step_description = plan[current_step]
+        print("正在执行：", step_description)
+        print(f"Executing step {current_step + 1}/{len(plan)}: {step_description}")
+        # 模拟执行结果
+        create_agent(
+            system_prompt="按照输入执行",
+            model=q_max,
+            tools=[],
+
+        )
+        execution_result = f"Done: {step_description}"
+        
+        return {
+            "current_step": current_step + 1,
+            "past_steps": [(step_description, execution_result)]
+        }
+    
+    return {"current_step": current_step}
 
 def replan_node(state: AgentState):
     pass
