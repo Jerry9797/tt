@@ -7,6 +7,9 @@ from langgraph.graph.message import add_messages
 from requests.models import Response
 
 
+def overwrite(left, right):
+    return right
+
 class AgentState(TypedDict):
     query: str
     # 消息
@@ -20,9 +23,9 @@ class AgentState(TypedDict):
     # 是否命中SOP
     is_sop_matched: bool
     # 计划
-    plan: List[str]
+    plan: Annotated[List[str], overwrite]
     # 当前执行的步骤
-    current_step: int
+    current_step: Annotated[int, overwrite]
     # 以及执行完成的步骤
     past_steps: Annotated[List[Tuple], operator.add]
     response: str
