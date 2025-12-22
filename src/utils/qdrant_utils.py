@@ -29,6 +29,7 @@ def qdrant_select(query: str,score_threshold : float = 0.75, collection_name: st
     )
     return results
 
+# 存储faq
 vector_size = 1536
 def qdrant_insert_faq(faq_list: List[dict], collection_name : str = "dz_channel_faq"):
     points = []

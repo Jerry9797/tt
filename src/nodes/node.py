@@ -4,7 +4,9 @@ Aggregates nodes from sub-modules and builds the state graph.
 """
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.checkpoint.redis import RedisSaver
 
+from src.config.redis import client
 from src.graph_state import AgentState
 from src.nodes.query_nodes import query_rewrite_node, ask_human
 from src.nodes.rag_nodes import faq_retrieve_node
