@@ -17,7 +17,7 @@ class AgentState(TypedDict):
     # 对query进行提取，查询FAQ
     faq_query: str
     faq_response: list[str]
-    need_clarification: bool
+
     # 意图
     intent: str
     # 是否命中SOP
@@ -38,6 +38,11 @@ class AgentState(TypedDict):
     
     # ⭐ 新增: 整体执行摘要
     execution_summary: Annotated[Optional['PlanExecutionSummary'], overwrite]
+    
+    # ⭐ 新增: Human-in-the-Loop 通用字段
+    need_clarification: bool # 是否中断
+    return_to: str # 发出中断请求的node
+    # interrupt_context: Annotated[Optional[Dict[str, Any]], overwrite]  # 中断上下文（记录来源、返回节点等）
 
 
 

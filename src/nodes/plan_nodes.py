@@ -1,3 +1,5 @@
+from idlelib.undo import Command
+
 from langchain.agents import create_agent
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.prompts import PromptTemplate
@@ -48,7 +50,7 @@ def planning_node(state: AgentState):
     }
 
 
-def plan_executor_node(state: AgentState) -> dict:
+def plan_executor_node(state: AgentState):
     """增强版计划执行节点 - 详细追踪每步执行结果"""
     plan = state.get("plan", [])
     current_step = state.get("current_step", 0)
@@ -83,77 +85,49 @@ def plan_executor_node(state: AgentState) -> dict:
     )
     messages_to_add.append(start_message)
 
-    try:
-        print(f"[执行] 步骤 {current_step + 1}/{len(plan)}: {step_description}")
+    print(f"[执行] 步骤 {current_step + 1}/{len(plan)}: {step_description}")
 
-        # 准备Agent系统提示
-        system_prompt = build_executor_prompt(state, current_step, step_description)
+    # 准备Agent系统提示
+    system_prompt = build_executor_prompt(state, current_step, step_description)
+    # 创建Agent
+    agent = create_agent(
+        system_prompt=system_prompt,
+        model=q_max,
+        tools=[check_low_star_merchant, check_sensitive_merchant],
+    )
 
-        # 创建Agent
-        agent = create_agent(
-            system_prompt=system_prompt,
-            model=q_max,
-            tools=[check_low_star_merchant, check_sensitive_merchant],
-        )
+    # 执行
+    start_exec = time.time()
+    execution_result = agent.invoke()
+    exec_duration = (time.time() - start_exec) * 1000
 
-        # 执行
-        start_exec = time.time()
-        execution_result = agent.invoke()
-        exec_duration = (time.time() - start_exec) * 1000
+    # 提取工具调用信息
+    tool_calls = extract_tool_calls(execution_result)
 
-        # 提取工具调用信息
-        tool_calls = extract_tool_calls(execution_result)
+    # 更新结果
+    step_result.status = StepStatus.SUCCESS
+    step_result.end_time = datetime.now()
+    step_result.duration_ms = exec_duration
+    step_result.agent_response = str(execution_result.get("output", ""))
+    step_result.output_result = extract_output(execution_result)
+    step_result.tool_calls = tool_calls
 
-        # 更新结果
-        step_result.status = StepStatus.SUCCESS
-        step_result.end_time = datetime.now()
-        step_result.duration_ms = exec_duration
-        step_result.agent_response = str(execution_result.get("output", ""))
-        step_result.output_result = extract_output(execution_result)
-        step_result.tool_calls = tool_calls
+    print(f"[成功] 步骤 {current_step + 1} 完成,耗时 {exec_duration:.2f}ms")
 
-        print(f"[成功] 步骤 {current_step + 1} 完成,耗时 {exec_duration:.2f}ms")
-        
-        # 📝 添加成功消息
-        result_summary = step_result.output_result[:200] if step_result.output_result else "执行完成"
-        tools_used = f" (使用了{len(tool_calls)}个工具)" if tool_calls else ""
-        
-        success_message = AIMessage(
-            content=f"✅ 步骤 {current_step + 1} 完成{tools_used}\n{result_summary}"
-        )
-        messages_to_add.append(success_message)
+    # 📝 添加成功消息
+    result_summary = step_result.output_result[:200] if step_result.output_result else "执行完成"
+    tools_used = f" (使用了{len(tool_calls)}个工具)" if tool_calls else ""
 
-    except GraphInterrupt as gi:
-        # 处理中断 - 需要人工干预
-        step_result.status = StepStatus.NEED_CLARIFICATION
-        step_result.interrupt_question = str(gi.value)
-        step_result.end_time = datetime.now()
-        step_result.duration_ms = (step_result.end_time - step_result.start_time).total_seconds() * 1000
-        print(f"[中断] 步骤 {current_step + 1} 需要澄清: {gi.value}")
-        
-        # 📝 添加中断消息
-        interrupt_message = AIMessage(
-            content=f"⏸️ 步骤 {current_step + 1} 需要您的帮助\n{gi.value}"
-        )
-        messages_to_add.append(interrupt_message)
-        
-        # 重新抛出中断以便上层处理
-        raise
+    success_message = AIMessage(
+        content=f"✅ 步骤 {current_step + 1} 完成{tools_used}\n{result_summary}"
+    )
+    messages_to_add.append(success_message)
 
-    except Exception as e:
-        # 处理错误
-        step_result.status = StepStatus.FAILED
-        step_result.error_message = str(e)
-        step_result.error_traceback = traceback.format_exc()
-        step_result.end_time = datetime.now()
-        step_result.duration_ms = (step_result.end_time - step_result.start_time).total_seconds() * 1000
-        print(f"[失败] 步骤 {current_step + 1} 执行失败: {e}")
-        
-        # 📝 添加失败消息
-        error_message = AIMessage(
-            content=f"❌ 步骤 {current_step + 1} 执行失败\n错误: {str(e)[:200]}"
-        )
-        messages_to_add.append(error_message)
+    if "ask_human" in execution_result:
+        return Command(goto="ask_human", update={
+            "response": "",
+            "return_to": "plan_executor_node",
+        })
 
     # 返回更新的状态
     return {
@@ -189,7 +163,7 @@ def build_executor_prompt(state: AgentState, step_index: int, task: str) -> str:
 要求:
 1. 严格按照当前步骤描述执行
 2. 如果需要调用工具,请直接调用
-3. 如果信息不足,说明需要什么信息
+3. 如果信息不足,输出 "ask_human"，询问人类
 4. 不要重复前面步骤的工作
 """
 
@@ -230,7 +204,7 @@ def finalize_execution(state: AgentState) -> dict:
     step_results = state.get("step_results", [])
 
     summary = PlanExecutionSummary(
-        plan_id=state.get("thread_id", "unknown"),
+        # plan_id=state.get("thread_id", "unknown"),
         query=state.get("query", ""),
         intent=state.get("intent"),
         is_sop=state.get("is_sop_matched", False),
@@ -269,5 +243,170 @@ def finalize_execution(state: AgentState) -> dict:
     }
 
 
-def replan_node(state: AgentState):
-    pass
+def replan_node(state: AgentState) -> dict:
+    """
+    重新规划节点 - 评估执行结果并决定下一步行动
+    
+    职责：
+    1. 评估已执行步骤的结果
+    2. 判断是否已收集足够信息可以回答用户
+    3. 判断是否需要调整计划或重新规划
+    4. 决定：继续执行 / 重新规划 / 结束并响应
+    """
+    from langchain_core.messages import AIMessage, SystemMessage
+    from langchain_core.output_parsers import JsonOutputParser
+    from langchain_core.prompts import ChatPromptTemplate
+    
+    query = state.get("query", "")
+    plan = state.get("plan", [])
+    current_step = state.get("current_step", 0)
+    step_results = state.get("step_results", [])
+    
+    # 如果还没有执行任何步骤，直接继续
+    if not step_results:
+        return {}
+    
+    # 构建已完成步骤的摘要
+    completed_steps_summary = []
+    for result in step_results:
+        status = "✅ 成功" if result.status == "success" else "❌ 失败"
+        summary = f"{status} 步骤{result.step_index + 1}: {result.step_description}"
+        if result.output_result:
+            summary += f"\n   结果: {result.output_result[:150]}"
+        if result.error_message:
+            summary += f"\n   错误: {result.error_message[:100]}"
+        completed_steps_summary.append(summary)
+    
+    # 剩余步骤
+    remaining_steps = plan[current_step:] if current_step < len(plan) else []
+    
+    # 构建重新规划的提示
+    replan_prompt = f"""你是一个智能规划评估助手。你的任务是评估当前执行情况，并决定下一步行动。
+
+用户问题：{query}
+
+原始计划：
+{chr(10).join([f"{i+1}. {step}" for i, step in enumerate(plan)])}
+
+已完成的步骤：
+{chr(10).join(completed_steps_summary)}
+
+剩余步骤：
+{chr(10).join([f"{i+current_step+1}. {step}" for i, step in enumerate(remaining_steps)]) if remaining_steps else "无"}
+
+请评估：
+1. 已完成的步骤是否收集了足够的信息来回答用户问题？
+2. 如果信息足够，请生成最终响应
+3. 如果信息不足：
+   - 剩余步骤是否合理？如果合理，继续执行
+   - 剩余步骤不合理或需要调整？生成新的计划
+
+输出格式：
+{{
+    "decision": "respond" 或 "continue" 或 "replan",
+    "reasoning": "你的推理过程",
+    "response": "最终响应（仅当decision为respond时）",
+    "new_plan": ["新步骤1", "新步骤2"] （仅当decision为replan时）
+}}
+
+决策说明：
+- respond: 已有足够信息，可以回答用户
+- continue: 继续执行剩余计划
+- replan: 需要调整计划或重新规划
+"""
+
+    # 调用LLM进行决策
+    messages = [
+        SystemMessage(content="你是一个智能规划评估助手，擅长分析执行结果并做出合理决策。"),
+        {"role": "user", "content": replan_prompt}
+    ]
+    
+    try:
+        result = q_max.invoke(messages)
+        
+        # 解析LLM响应
+        import json
+        try:
+            decision_data = json.loads(result.content)
+        except:
+            # 如果JSON解析失败，使用JsonOutputParser
+            from langchain_core.output_parsers import StrOutputParser
+            parser = StrOutputParser()
+            content = parser.invoke(result)
+            # 尝试从content中提取JSON
+            import re
+            json_match = re.search(r'\{.*\}', content, re.DOTALL)
+            if json_match:
+                decision_data = json.loads(json_match.group())
+            else:
+                # 默认继续执行
+                decision_data = {
+                    "decision": "continue",
+                    "reasoning": "无法解析LLM响应，默认继续执行"
+                }
+        
+        decision = decision_data.get("decision", "continue")
+        reasoning = decision_data.get("reasoning", "")
+        
+        print(f"\n[Replan] 决策: {decision}")
+        print(f"[Replan] 推理: {reasoning}")
+        
+        messages_to_add = []
+        
+        # 根据决策返回不同的结果
+        if decision == "respond":
+            # 已有足够信息，生成最终响应
+            response_text = decision_data.get("response", "")
+            
+            response_message = AIMessage(
+                content=f"💡 已收集足够信息，生成最终答案\n{response_text}"
+            )
+            messages_to_add.append(response_message)
+            
+            return {
+                "response": response_text,
+                "messages": messages_to_add,
+                # 标记为完成，停止继续执行
+                "current_step": len(plan)  # 设置为计划长度，触发完成
+            }
+        
+        elif decision == "replan":
+            # 需要重新规划
+            new_plan = decision_data.get("new_plan", [])
+            
+            replan_message = AIMessage(
+                content=f"🔄 需要调整计划\n原因: {reasoning}\n新计划:\n" +
+                        "\n".join([f"{i+1}. {step}" for i, step in enumerate(new_plan)])
+            )
+            messages_to_add.append(replan_message)
+            
+            return {
+                "plan": new_plan,
+                "current_step": 0,  # 重置到第一步
+                "messages": messages_to_add
+            }
+        
+        else:  # continue
+            # 继续执行剩余计划
+            continue_message = AIMessage(
+                content=f"▶️ 继续执行剩余计划\n原因: {reasoning}"
+            )
+            messages_to_add.append(continue_message)
+            
+            return {
+                "messages": messages_to_add
+            }
+    
+    except Exception as e:
+        print(f"[Replan] 错误: {e}")
+        import traceback
+        traceback.print_exc()
+        
+        # 出错时默认继续执行
+        error_message = AIMessage(
+            content=f"⚠️ 评估过程出错，继续执行原计划\n错误: {str(e)[:100]}"
+        )
+        
+        return {
+            "messages": [error_message]
+        }

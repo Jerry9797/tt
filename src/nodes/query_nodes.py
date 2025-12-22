@@ -70,7 +70,8 @@ def query_rewrite_node(state: AgentState):
         return Command(goto="ask_human", update={
             "need_clarification": ret.get("need_clarification"),
             "response": ret.get("clarifying_question"),
-            "faq_query": "", 
+            "return_to": "query_rewrite_node",
+            "faq_query": "",
             "keywords": []
         })
 
@@ -80,23 +81,39 @@ def query_rewrite_node(state: AgentState):
     }
 
 def ask_human(state: AgentState):
-    """
-    负责处理澄清交互的中断节点。
-    """
+    from langchain_core.messages import AIMessage, HumanMessage
+    
+    # ⭐ 获取中断上下文
+    return_to = state.get("return_to", {})
     question = state.get("response")
-    # 挂起执行，等待用户输入
+    source_node = "query_rewrite_node"
+
+    
+    print(f"[AskHuman] 中断来源: {source_node}")
+    print(f"[AskHuman] 问题: {question}")
+    print(f"[AskHuman] 将返回到: {return_to}")
+    
+    # ⭐ 挂起执行，等待用户输入
     user_response = interrupt(question)
     
-    print(f"DEBUG: [ask_human] 收到用户回复: {user_response}")
+    print(f"[AskHuman] 收到用户回复: {user_response}")
     
-    # 构造新的消息记录
+    # ⭐ 构造消息记录
     new_messages = [
-        AIMessage(content=question),
+        AIMessage(content=f"⏸️ {question}"),
         HumanMessage(content=user_response)
     ]
     
-    # 更新状态并跳转回重写节点
+    # ⭐ 统一返回：使用human_input存储用户输入
+    update_dict = {
+        "messages": new_messages,
+        "need_clarification": False   # 清除中断状态
+    }
+    
+    print(f"[AskHuman] 返回到节点: {return_to}")
+    
+    # ⭐ 返回到interrupt_context指定的节点
     return Command(
-        goto="query_rewrite_node", 
-        update={"messages": new_messages}
+        goto=return_to,
+        update=update_dict
     )
