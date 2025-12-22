@@ -32,13 +32,14 @@ class ChatResponse(BaseModel):
     status: str = "success"
 
 # Initialize graph
-graph = build_graph()
+
 
 from langgraph.errors import GraphInterrupt
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     try:
+        graph = build_graph()
         config = {"configurable": {"thread_id": request.thread_id or "default_thread"}}
         result = {} # Initialize result
 
