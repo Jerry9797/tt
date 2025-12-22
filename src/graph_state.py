@@ -1,7 +1,7 @@
 import operator
 
 from pydantic import BaseModel, Field
-from typing import TypedDict, Annotated, List, Dict, Any, Union, Tuple
+from typing import TypedDict, Annotated, List, Dict, Any, Union, Tuple, Optional
 from langchain_core.messages import AnyMessage
 from langgraph.graph.message import add_messages
 from requests.models import Response
@@ -29,6 +29,16 @@ class AgentState(TypedDict):
     # 以及执行完成的步骤
     past_steps: Annotated[List[Tuple], operator.add]
     response: str
+    
+    # ⭐ 新增: 结构化的执行结果列表
+    step_results: Annotated[List['StepExecutionResult'], operator.add]
+    
+    # ⭐ 新增: 当前正在执行的步骤结果
+    current_step_result: Annotated[Optional['StepExecutionResult'], overwrite]
+    
+    # ⭐ 新增: 整体执行摘要
+    execution_summary: Annotated[Optional['PlanExecutionSummary'], overwrite]
+
 
 
 class Plan(BaseModel):
