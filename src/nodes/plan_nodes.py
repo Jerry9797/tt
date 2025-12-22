@@ -51,17 +51,17 @@ def planning_node(state: AgentState):
 
 
 def plan_executor_node(state: AgentState):
-    """增强版计划执行节点 - 详细追踪每步执行结果"""
+    """增强版计划执行节点 - 支持Human-in-the-Loop"""
     plan = state.get("plan", [])
     current_step = state.get("current_step", 0)
-
+    
     # 检查是否已完成所有步骤
     if current_step >= len(plan):
         print(f"[PlanExecutor] 所有步骤已完成")
         return finalize_execution(state)
-
+    
     step_description = plan[current_step]
-
+    
     # 初始化步骤执行结果
     step_result = StepExecutionResult(
         step_index=current_step,
@@ -75,68 +75,119 @@ def plan_executor_node(state: AgentState):
         }
     )
     
-    # 📝 添加开始执行的消息
+    # 📝 添加消息
     from langchain_core.messages import AIMessage
     messages_to_add = []
     
-    # 开始消息
-    start_message = AIMessage(
-        content=f"🔄 开始执行步骤 {current_step + 1}/{len(plan)}: {step_description}"
-    )
-    messages_to_add.append(start_message)
-
+    # ⭐ 检查是否是恢复执行（从ask_human返回）
+    # 通过检查messages中的最后一条HumanMessage来判断
+    messages = state.get("messages", [])
+    user_input = None
+    
+    if messages and len(messages) >= 2:
+        # 检查最后两条消息是否是 AIMessage(问题) + HumanMessage(回复)
+        if (messages[-2].__class__.__name__ == "AIMessage" and 
+            "⏸️" in messages[-2].content and
+            messages[-1].__class__.__name__ == "HumanMessage"):
+            user_input = messages[-1].content
+            print(f"[Executor] 检测到用户回复: {user_input}")
+            
+            # 添加恢复消息
+            resume_message = AIMessage(
+                content=f"▶️ 收到您的回复，继续执行步骤 {current_step + 1}"
+            )
+            messages_to_add.append(resume_message)
+    
+    if not user_input:
+        # 首次执行此步骤，添加开始消息
+        start_message = AIMessage(
+            content=f"🔄 开始执行步骤 {current_step + 1}/{len(plan)}: {step_description}"
+        )
+        messages_to_add.append(start_message)
+    
     print(f"[执行] 步骤 {current_step + 1}/{len(plan)}: {step_description}")
-
+    
     # 准备Agent系统提示
     system_prompt = build_executor_prompt(state, current_step, step_description)
+    
+    # ⭐ 如果有用户输入，注入到prompt中
+    if user_input:
+        system_prompt += f"\n\n【用户提供的信息】\n{user_input}\n请使用这个信息完成当前任务。"
+    
     # 创建Agent
     agent = create_agent(
         system_prompt=system_prompt,
         model=q_max,
         tools=[check_low_star_merchant, check_sensitive_merchant],
     )
-
+    
     # 执行
     start_exec = time.time()
     execution_result = agent.invoke()
     exec_duration = (time.time() - start_exec) * 1000
-
+    
+    output = execution_result.get("output", "")
+    
+    # ⭐ 检查是否需要询问用户
+    if "ask_human" in output.lower():
+        print(f"[中断] 步骤 {current_step + 1} 需要用户输入")
+        
+        # 提取问题（Agent应该在输出中说明需要什么信息）
+        question = output.replace("ask_human", "").strip()
+        if not question:
+            question = "请提供执行此步骤所需的信息"
+        
+        # 更新步骤状态为需要澄清
+        step_result.status = StepStatus.NEED_CLARIFICATION
+        step_result.interrupt_question = question
+        step_result.end_time = datetime.now()
+        step_result.duration_ms = exec_duration
+        
+        # 添加中断消息
+        interrupt_message = AIMessage(
+            content=f"⏸️ 步骤 {current_step + 1} 需要更多信息\n{question}"
+        )
+        messages_to_add.append(interrupt_message)
+        
+        # ⭐ 中断：不增加current_step，保持在当前步骤
+        return Command(goto="ask_human", update={
+            "response": question,
+            "return_to": "plan_executor",
+            "need_clarification": True,
+            "step_results": [step_result],
+            "messages": messages_to_add,
+            # current_step 不变！用户回复后会重新执行这一步
+        })
+    
+    # 正常执行完成
     # 提取工具调用信息
     tool_calls = extract_tool_calls(execution_result)
-
+    
     # 更新结果
     step_result.status = StepStatus.SUCCESS
     step_result.end_time = datetime.now()
     step_result.duration_ms = exec_duration
-    step_result.agent_response = str(execution_result.get("output", ""))
-    step_result.output_result = extract_output(execution_result)
+    step_result.agent_response = str(output)
+    step_result.output_result = output[:500] if output else ""
     step_result.tool_calls = tool_calls
-
+    
     print(f"[成功] 步骤 {current_step + 1} 完成,耗时 {exec_duration:.2f}ms")
-
+    
     # 📝 添加成功消息
     result_summary = step_result.output_result[:200] if step_result.output_result else "执行完成"
     tools_used = f" (使用了{len(tool_calls)}个工具)" if tool_calls else ""
-
+    
     success_message = AIMessage(
         content=f"✅ 步骤 {current_step + 1} 完成{tools_used}\n{result_summary}"
     )
     messages_to_add.append(success_message)
-
-    if "ask_human" in execution_result:
-        return Command(goto="ask_human", update={
-            "response": "",
-            "return_to": "plan_executor_node",
-        })
-
-    # 返回更新的状态
+    
+    # ⭐ 成功后才增加current_step
     return {
         "current_step": current_step + 1,
         "step_results": [step_result],
-        "current_step_result": step_result,
-        # 📝 添加消息到对话历史
         "messages": messages_to_add,
-        # 保持向后兼容
+        "need_clarification": False,
         "past_steps": [(step_description, step_result.agent_response)]
     }
 
