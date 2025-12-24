@@ -4,10 +4,18 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="7a7922d2-7fae-4b59-9863-f2cfc34f36ac" name="Changes" comment="feature:add code">
+    <list default="true" id="8695e368-970a-4ca6-87bd-0db42f859791" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/src/mcp/client_demo.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/mcp/demo.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/prompt/prompt.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.env" beforeDir="false" afterPath="$PROJECT_DIR$/.env" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/config/sop_config.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/src/config/sop_config.yaml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/graph_state.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/graph_state.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/nodes/intent_nodes.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/nodes/intent_nodes.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/nodes/plan_nodes.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/nodes/plan_nodes.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/nodes/query_nodes.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/nodes/query_nodes.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/tools/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/tools/__init__.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -24,74 +32,15 @@
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
-  <component name="GitHubPullRequestSearchHistory">{
-  &quot;lastFilter&quot;: {
-    &quot;state&quot;: &quot;OPEN&quot;,
-    &quot;assignee&quot;: &quot;Jerry9797&quot;
-  }
-}</component>
-  <component name="GithubPullRequestsUISettings">{
-  &quot;selectedUrlAndAccountId&quot;: {
-    &quot;url&quot;: &quot;https://github.com/Jerry9797/tt.git&quot;,
-    &quot;accountId&quot;: &quot;8782dc1c-2cb3-4ca0-9be1-2e66024dab6e&quot;
-  }
-}</component>
-  <component name="HighlightingSettingsPerFile">
-    <setting file="file://$PROJECT_DIR$/.venv/lib/python3.13/site-packages/fastembed/text/onnx_text_model.py" root0="SKIP_INSPECTION" />
-    <setting file="file://$PROJECT_DIR$/.venv/lib/python3.13/site-packages/langchain/agents/factory.py" root0="SKIP_INSPECTION" />
-    <setting file="file://$PROJECT_DIR$/.venv/lib/python3.13/site-packages/langchain/agents/structured_output.py" root0="SKIP_INSPECTION" />
-    <setting file="file://$PROJECT_DIR$/.venv/lib/python3.13/site-packages/langchain_core/messages/human.py" root0="SKIP_INSPECTION" />
-    <setting file="file://$PROJECT_DIR$/.venv/lib/python3.13/site-packages/langgraph/_internal/_runnable.py" root0="SKIP_INSPECTION" />
-    <setting file="file://$PROJECT_DIR$/.venv/lib/python3.13/site-packages/langgraph/pregel/main.py" root0="SKIP_INSPECTION" />
-    <setting file="file://$PROJECT_DIR$/.venv/lib/python3.13/site-packages/qdrant_client/fastembed_common.py" root0="SKIP_INSPECTION" />
-    <setting file="file://$PROJECT_DIR$/.venv/lib/python3.13/site-packages/qdrant_client/http/models/models.py" root0="SKIP_INSPECTION" />
-    <setting file="file://$PROJECT_DIR$/.venv/lib/python3.13/site-packages/qdrant_client/qdrant_client.py" root0="SKIP_INSPECTION" />
-    <setting file="file://$PROJECT_DIR$/.venv/lib/python3.13/site-packages/qdrant_client/qdrant_fastembed.py" root0="SKIP_INSPECTION" />
-  </component>
-  <component name="ProjectColorInfo">{
-  &quot;associatedIndex&quot;: 2
-}</component>
-  <component name="ProjectId" id="36Qoh2L0ZlvqL5LMjT4odEUyXxc" />
-  <component name="ProjectViewState">
-    <option name="hideEmptyMiddlePackages" value="true" />
-    <option name="showLibraryContents" value="true" />
-  </component>
   <component name="PropertiesComponent"><![CDATA[{
   "keyToString": {
-    "Python.node.executor": "Run",
-    "Python.query_rewrite (1).executor": "Debug",
-    "Python.query_rewrite.executor": "Debug",
-    "Python.streamlit.executor": "Debug",
-    "Python.test_messages_flow.executor": "Run",
-    "Python.创建qdrant.executor": "Run",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.git.unshallow": "true",
+    "Python.test_real_ai_shop_no_call.executor": "Debug",
     "git-widget-placeholder": "main",
-    "last_opened_file_path": "/Users/heyilu/Documents/py_project/tt/src",
-    "mcopilot_agent_context_state_catpaw_code_repo_config": "{\"rules\":[],\"mcpServers\":\"\",\"lastUpdated\":\"2025-12-22T03:00:25.179236Z\"}",
-    "node.js.detected.package.eslint": "true",
-    "node.js.detected.package.tslint": "true",
-    "node.js.selected.package.eslint": "(autodetect)",
-    "node.js.selected.package.tslint": "(autodetect)",
-    "nodejs_package_manager_path": "npm",
-    "settings.editor.selected.configurable": "sshConsole",
-    "vue.rearranger.settings.migration": "true"
+    "node.js.selected.package.tslint": "(autodetect)"
   }
 }]]></component>
-  <component name="RecentsManager">
-    <key name="CopyFile.RECENT_KEYS">
-      <recent name="$PROJECT_DIR$/src" />
-      <recent name="$PROJECT_DIR$/config" />
-      <recent name="$PROJECT_DIR$" />
-    </key>
-    <key name="MoveFile.RECENT_KEYS">
-      <recent name="$PROJECT_DIR$/src/node" />
-      <recent name="$PROJECT_DIR$/src" />
-      <recent name="$PROJECT_DIR$/src/api" />
-    </key>
-  </component>
-  <component name="RunManager" selected="Python.test_messages_flow">
-    <configuration name="main" type="PythonConfigurationType" factoryName="Python" nameIsGenerated="true">
+  <component name="RunManager">
+    <configuration name="test_real_ai_shop_no_call" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
       <module name="tt" />
       <option name="ENV_FILES" value="" />
       <option name="INTERPRETER_OPTIONS" value="" />
@@ -100,12 +49,12 @@
         <env name="PYTHONUNBUFFERED" value="1" />
       </envs>
       <option name="SDK_HOME" value="" />
-      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/tests" />
       <option name="IS_MODULE_SDK" value="true" />
       <option name="ADD_CONTENT_ROOTS" value="true" />
       <option name="ADD_SOURCE_ROOTS" value="true" />
       <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
-      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/main.py" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/tests/test_real_ai_shop_no_call.py" />
       <option name="PARAMETERS" value="" />
       <option name="SHOW_COMMAND_LINE" value="false" />
       <option name="EMULATE_TERMINAL" value="false" />
@@ -114,313 +63,30 @@
       <option name="INPUT_FILE" value="" />
       <method v="2" />
     </configuration>
-    <configuration name="node" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
-      <module name="tt" />
-      <option name="ENV_FILES" value="" />
-      <option name="INTERPRETER_OPTIONS" value="" />
-      <option name="PARENT_ENVS" value="true" />
-      <envs>
-        <env name="PYTHONUNBUFFERED" value="1" />
-      </envs>
-      <option name="SDK_HOME" value="" />
-      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/src" />
-      <option name="IS_MODULE_SDK" value="true" />
-      <option name="ADD_CONTENT_ROOTS" value="true" />
-      <option name="ADD_SOURCE_ROOTS" value="true" />
-      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
-      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/src/node/node.py" />
-      <option name="PARAMETERS" value="" />
-      <option name="SHOW_COMMAND_LINE" value="false" />
-      <option name="EMULATE_TERMINAL" value="false" />
-      <option name="MODULE_MODE" value="false" />
-      <option name="REDIRECT_INPUT" value="false" />
-      <option name="INPUT_FILE" value="" />
-      <method v="2" />
-    </configuration>
-    <configuration name="创建qdrant" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
-      <module name="tt" />
-      <option name="ENV_FILES" value="" />
-      <option name="INTERPRETER_OPTIONS" value="" />
-      <option name="PARENT_ENVS" value="true" />
-      <envs>
-        <env name="PYTHONUNBUFFERED" value="1" />
-      </envs>
-      <option name="SDK_HOME" value="" />
-      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/脚本" />
-      <option name="IS_MODULE_SDK" value="true" />
-      <option name="ADD_CONTENT_ROOTS" value="true" />
-      <option name="ADD_SOURCE_ROOTS" value="true" />
-      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
-      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/脚本/创建qdrant.py" />
-      <option name="PARAMETERS" value="" />
-      <option name="SHOW_COMMAND_LINE" value="false" />
-      <option name="EMULATE_TERMINAL" value="false" />
-      <option name="MODULE_MODE" value="false" />
-      <option name="REDIRECT_INPUT" value="false" />
-      <option name="INPUT_FILE" value="" />
-      <method v="2" />
-    </configuration>
-    <configuration name="query_rewrite" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
-      <module name="tt" />
-      <option name="ENV_FILES" value="" />
-      <option name="INTERPRETER_OPTIONS" value="" />
-      <option name="PARENT_ENVS" value="true" />
-      <envs>
-        <env name="PYTHONUNBUFFERED" value="1" />
-      </envs>
-      <option name="SDK_HOME" value="" />
-      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/src/node" />
-      <option name="IS_MODULE_SDK" value="true" />
-      <option name="ADD_CONTENT_ROOTS" value="true" />
-      <option name="ADD_SOURCE_ROOTS" value="true" />
-      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
-      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/src/node/query_rewrite.py" />
-      <option name="PARAMETERS" value="" />
-      <option name="SHOW_COMMAND_LINE" value="false" />
-      <option name="EMULATE_TERMINAL" value="false" />
-      <option name="MODULE_MODE" value="false" />
-      <option name="REDIRECT_INPUT" value="false" />
-      <option name="INPUT_FILE" value="" />
-      <method v="2" />
-    </configuration>
-    <configuration name="streamlit" type="PythonConfigurationType" factoryName="Python">
-      <module name="tt" />
-      <option name="ENV_FILES" value="" />
-      <option name="INTERPRETER_OPTIONS" value="" />
-      <option name="PARENT_ENVS" value="true" />
-      <envs>
-        <env name="PYTHONUNBUFFERED" value="1" />
-      </envs>
-      <option name="SDK_HOME" value="" />
-      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
-      <option name="IS_MODULE_SDK" value="false" />
-      <option name="ADD_CONTENT_ROOTS" value="true" />
-      <option name="ADD_SOURCE_ROOTS" value="true" />
-      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
-      <option name="SCRIPT_NAME" value="streamlit" />
-      <option name="PARAMETERS" value="run src/ui/app.py" />
-      <option name="SHOW_COMMAND_LINE" value="false" />
-      <option name="EMULATE_TERMINAL" value="false" />
-      <option name="MODULE_MODE" value="true" />
-      <option name="REDIRECT_INPUT" value="false" />
-      <option name="INPUT_FILE" value="" />
-      <method v="2" />
-    </configuration>
-    <configuration name="test_messages_flow" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
-      <module name="tt" />
-      <option name="ENV_FILES" value="" />
-      <option name="INTERPRETER_OPTIONS" value="" />
-      <option name="PARENT_ENVS" value="true" />
-      <envs>
-        <env name="PYTHONUNBUFFERED" value="1" />
-      </envs>
-      <option name="SDK_HOME" value="" />
-      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/examples" />
-      <option name="IS_MODULE_SDK" value="true" />
-      <option name="ADD_CONTENT_ROOTS" value="true" />
-      <option name="ADD_SOURCE_ROOTS" value="true" />
-      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
-      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/examples/test_messages_flow.py" />
-      <option name="PARAMETERS" value="" />
-      <option name="SHOW_COMMAND_LINE" value="false" />
-      <option name="EMULATE_TERMINAL" value="false" />
-      <option name="MODULE_MODE" value="false" />
-      <option name="REDIRECT_INPUT" value="false" />
-      <option name="INPUT_FILE" value="" />
-      <method v="2" />
-    </configuration>
-    <list>
-      <item itemvalue="Python.main" />
-      <item itemvalue="Python.streamlit" />
-      <item itemvalue="Python.test_messages_flow" />
-      <item itemvalue="Python.node" />
-      <item itemvalue="Python.query_rewrite" />
-      <item itemvalue="Python.创建qdrant" />
-    </list>
     <recent_temporary>
       <list>
-        <item itemvalue="Python.test_messages_flow" />
-        <item itemvalue="Python.node" />
-        <item itemvalue="Python.query_rewrite" />
-        <item itemvalue="Python.创建qdrant" />
+        <item itemvalue="Python.test_real_ai_shop_no_call" />
       </list>
     </recent_temporary>
   </component>
-  <component name="SharedIndexes">
-    <attachedChunks>
-      <set>
-        <option value="bundled-js-predefined-d6986cc7102b-1632447f56bf-JavaScript-PY-243.25659.43" />
-        <option value="bundled-python-sdk-181015f7ab06-4df51de95216-com.jetbrains.pycharm.pro.sharedIndexes.bundled-PY-243.25659.43" />
-      </set>
-    </attachedChunks>
-  </component>
-  <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="application-level" UseSingleDictionary="true" transferred="true" />
   <component name="SvnConfiguration">
-    <configuration>$USER_HOME$/.subversion</configuration>
+    <configuration />
   </component>
   <component name="TaskManager">
-    <task active="true" id="Default" summary="Default task">
-      <changelist id="7a7922d2-7fae-4b59-9863-f2cfc34f36ac" name="Changes" comment="" />
-      <created>1764948272055</created>
-      <option name="number" value="Default" />
-      <option name="presentableId" value="Default" />
-      <updated>1764948272055</updated>
-      <workItem from="1764948273176" duration="21366000" />
-      <workItem from="1764975776108" duration="4278000" />
-      <workItem from="1765077603310" duration="4667000" />
-      <workItem from="1765905032572" duration="31000" />
-      <workItem from="1766070615179" duration="12071000" />
-    </task>
-    <task id="LOCAL-00001" summary="add">
-      <option name="closed" value="true" />
-      <created>1766219939348</created>
-      <option name="number" value="00001" />
-      <option name="presentableId" value="LOCAL-00001" />
-      <option name="project" value="LOCAL" />
-      <updated>1766219939348</updated>
-    </task>
-    <task id="LOCAL-00002" summary="中断">
-      <option name="closed" value="true" />
-      <created>1766221063380</created>
-      <option name="number" value="00002" />
-      <option name="presentableId" value="LOCAL-00002" />
-      <option name="project" value="LOCAL" />
-      <updated>1766221063380</updated>
-    </task>
-    <task id="LOCAL-00003" summary="中断">
-      <option name="closed" value="true" />
-      <created>1766221295005</created>
-      <option name="number" value="00003" />
-      <option name="presentableId" value="LOCAL-00003" />
-      <option name="project" value="LOCAL" />
-      <updated>1766221295005</updated>
-    </task>
-    <task id="LOCAL-00004" summary="feature:add code">
-      <option name="closed" value="true" />
-      <created>1766241904419</created>
-      <option name="number" value="00004" />
-      <option name="presentableId" value="LOCAL-00004" />
-      <option name="project" value="LOCAL" />
-      <updated>1766241904419</updated>
-    </task>
-    <task id="LOCAL-00005" summary="feature:add code">
-      <option name="closed" value="true" />
-      <created>1766244603179</created>
-      <option name="number" value="00005" />
-      <option name="presentableId" value="LOCAL-00005" />
-      <option name="project" value="LOCAL" />
-      <updated>1766244603179</updated>
-    </task>
-    <task id="LOCAL-00006" summary="feature:add code">
-      <option name="closed" value="true" />
-      <created>1766247591990</created>
-      <option name="number" value="00006" />
-      <option name="presentableId" value="LOCAL-00006" />
-      <option name="project" value="LOCAL" />
-      <updated>1766247591990</updated>
-    </task>
-    <task id="LOCAL-00007" summary="feature:add code">
-      <option name="closed" value="true" />
-      <created>1766288046156</created>
-      <option name="number" value="00007" />
-      <option name="presentableId" value="LOCAL-00007" />
-      <option name="project" value="LOCAL" />
-      <updated>1766288046156</updated>
-    </task>
-    <task id="LOCAL-00008" summary="feature:add code">
-      <option name="closed" value="true" />
-      <created>1766291506633</created>
-      <option name="number" value="00008" />
-      <option name="presentableId" value="LOCAL-00008" />
-      <option name="project" value="LOCAL" />
-      <updated>1766291506633</updated>
-    </task>
-    <task id="LOCAL-00009" summary="feature:add code">
-      <option name="closed" value="true" />
-      <created>1766388434094</created>
-      <option name="number" value="00009" />
-      <option name="presentableId" value="LOCAL-00009" />
-      <option name="project" value="LOCAL" />
-      <updated>1766388434094</updated>
-    </task>
-    <task id="LOCAL-00010" summary="feature:add code">
-      <option name="closed" value="true" />
-      <created>1766393748596</created>
-      <option name="number" value="00010" />
-      <option name="presentableId" value="LOCAL-00010" />
-      <option name="project" value="LOCAL" />
-      <updated>1766393748596</updated>
-    </task>
-    <task id="LOCAL-00011" summary="feature:add code">
-      <option name="closed" value="true" />
-      <created>1766397917474</created>
-      <option name="number" value="00011" />
-      <option name="presentableId" value="LOCAL-00011" />
-      <option name="project" value="LOCAL" />
-      <updated>1766397917474</updated>
-    </task>
-    <option name="localTasksCounter" value="12" />
     <servers />
-  </component>
-  <component name="TypeScriptGeneratedFilesManager">
-    <option name="version" value="3" />
-  </component>
-  <component name="Vcs.Log.Tabs.Properties">
-    <option name="TAB_STATES">
-      <map>
-        <entry key="MAIN">
-          <value>
-            <State>
-              <option name="FILTERS">
-                <map>
-                  <entry key="branch">
-                    <value>
-                      <list>
-                        <option value="origin/main" />
-                      </list>
-                    </value>
-                  </entry>
-                </map>
-              </option>
-            </State>
-          </value>
-        </entry>
-      </map>
-    </option>
-  </component>
-  <component name="VcsManagerConfiguration">
-    <MESSAGE value="add" />
-    <MESSAGE value="中断" />
-    <MESSAGE value="feature:add code" />
-    <option name="LAST_COMMIT_MESSAGE" value="feature:add code" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
       <breakpoints>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/src/nodes/query_rewrite.py</url>
-          <line>34</line>
-          <option name="timeStamp" value="7" />
+          <url>file://$PROJECT_DIR$/src/nodes/plan_nodes.py</url>
+          <line>379</line>
+          <option name="timeStamp" value="41" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/src/nodes/node.py</url>
-          <line>15</line>
-          <option name="timeStamp" value="29" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/src/nodes/query_nodes.py</url>
-          <line>57</line>
-          <option name="timeStamp" value="32" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/src/api/app.py</url>
-          <line>78</line>
-          <option name="timeStamp" value="33" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/src/api/app.py</url>
-          <line>66</line>
-          <option name="timeStamp" value="34" />
+          <url>file://$PROJECT_DIR$/src/nodes/plan_nodes.py</url>
+          <line>413</line>
+          <option name="timeStamp" value="42" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>
@@ -429,6 +95,7 @@
     <SUITE FILE_PATH="coverage/tt$node.coverage" NAME="node Coverage Results" MODIFIED="1766216906691" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/src" />
     <SUITE FILE_PATH="coverage/tt$query_rewrite__1_.coverage" NAME="node Coverage Results" MODIFIED="1765121624996" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/src" />
     <SUITE FILE_PATH="coverage/tt$streamlit.coverage" NAME="streamlit Coverage Results" MODIFIED="1766387638764" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/tt$test_real_ai_shop_no_call.coverage" NAME="test_real_ai_shop_no_call Coverage Results" MODIFIED="1766559731762" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/tests" />
     <SUITE FILE_PATH="coverage/tt$query_rewrite.coverage" NAME="query_rewrite Coverage Results" MODIFIED="1764968490462" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/src/node" />
     <SUITE FILE_PATH="coverage/tt$test_messages_flow.coverage" NAME="test_messages_flow Coverage Results" MODIFIED="1766392967475" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/examples" />
     <SUITE FILE_PATH="coverage/tt$qdrant.coverage" NAME="创建qdrant Coverage Results" MODIFIED="1764963063836" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/脚本" />
