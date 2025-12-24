@@ -1,39 +1,227 @@
-# SOP 标准操作流程配置
-# 每个 SOP 定义了针对特定问题的标准化诊断步骤
+# SOP场景化配置
+# 每个SOP包含完整的配置：steps + tools + planning_prompt + metadata
+
+# ============================================================================
+# 商户召回问题
+# ============================================================================
 
 shop_them_no_call:
   name: "商户没有召回"
   description: "商户在推荐列表中没有被召回的问题诊断流程"
+  category: "召回问题"
+  owner: "推荐算法组"
+  
+  # 固定步骤
   steps:
-    - "确认用户提供的商户ID和平台信息（美团mt/点评dp）"
+    - "检查用户问题是否提供：商户ID和平台信息（美团/点评）；没有则询问用户。"
     - "使用check_low_star_merchant检查商户是否为零星商户（shop_star=0）"
     - "如果是零星商户，告知用户该商户命中零星商户卡控，建议协助商户提升星级"
     - "使用check_sensitive_merchant检查商户是否为软色情违规商户（risk_score>0.5或risk_score_v2=1）"
     - "如果是软色情违规商户，告知用户该商户因违规内容被过滤"
-#    - "如果商户状态正常，询问用户ID和访问时间，使用get_visit_record_by_userid查询访问记录"
-#    - "使用traceId调用get_recall_chain分析召回链路，检查经纬度、业务场景配置等参数"
-#    - "根据召回日志和OPT配置分析未召回原因，给出诊断结论和解决建议"
+  
+  # 需要的工具
+  tools:
+    - check_low_star_merchant
+    - check_sensitive_merchant
+    - get_visit_record_by_userid
+    - get_trace_context
+  
+  # Planning Prompt（用于replan时）
+  planning_prompt: |
+    # 角色定义
+    你是【商户召回问题诊断专家】，擅长排查商户为何未在推荐列表中召回。
+    
+    # 用户问题
+    {query}
+    
+    # 专业知识
+    ## 常见未召回原因（优先级排序）
+    1. **零星商户卡控** (最常见，约40%)
+       - shop_star=0 的商户会被系统过滤
+       - 工具: check_low_star_merchant
+    
+    2. **软色情违规** (约30%)
+       - risk_score>0.5 或 risk_score_v2=1
+       - 工具: check_sensitive_merchant
+    
+    3. **地理位置问题** (约15%)
+       - 经纬度配置错误、超出服务范围
+    
+    4. **营业状态异常** (约10%)
+       - 暂停营业、永久关闭
+    
+    ## 诊断策略
+    **标准流程**:
+    步骤1: 确认商户ID和平台（美团mt/点评dp）
+    步骤2: 优先检查高频原因（零星、违规）
+    步骤3: 如果都正常，再查配置和链路
+    
+    ⚠️ **注意**: 需要traceId才能分析召回链路
+    
+    # 输出要求
+    生成诊断步骤，每步明确"做什么"和"为什么"。
+    {format_instructions}
+  
+  # 指标
+  metrics:
+    success_rate: 0.85
+    avg_steps: 4
+    avg_duration_ms: 5000
+
+
+# ============================================================================
+# 展示字段缺失
+# ============================================================================
+
+display_field_missing:
+  name: "展示字段缺失"
+  description: "商户反馈某些展示字段（如距离、评分等）不展示的AB实验排查"
+  category: "展示问题"
+  owner: "前端展示组"
+  
+  steps:
+    - "确认用户反馈的缺失字段名称（如：distance, rating, businessHours）"
+    - "获取必要信息：userId（必须）+ 访问时间（必须）"
+    - "使用get_visit_record_by_userid查询用户访问记录，获取trace_id"
+    - "使用get_trace_context从trace_id中提取：sceneCode, expId, 请求参数"
+    - "使用get_experiment_detail根据expId查询实验详情和分组配置"
+    - "分析用户所在分组是否隐藏了该字段"
+    - "如果是实验导致，告知实验名称、负责人和预期时间；否则检查Fetcher逻辑"
+  
+  tools:
+    - get_visit_record_by_userid
+    - get_trace_context
+    - get_plan_id_by_scene_code
+    - get_document_fetcher_config
+    - get_experiment_detail
+  
+  planning_prompt: |
+    # 角色定义
+    你是【展示字段缺失诊断专家】，擅长基于TraceID排查AB实验导致的展示问题。
+    
+    # 用户问题
+    {query}
+    
+    # ⚠️ 关键前提：所有信息都依赖TraceID
+    
+    ## 信息获取流程
+    ```
+    用户输入(userId+时间) → TraceID → 链路上下文(sceneCode/expId/参数)
+    ```
+    
+    **没有TraceID就无法排查**，这是第一优先级！
+    
+    ## 标准排查流程
+    
+    ### Step 1: 获取TraceID（核心）
+    **必须信息**：
+    - userId（必须）
+    - 访问时间（必须，至少精确到小时）
+    
+    **工具**: `get_visit_record_by_userid(user_id, start_time)`
+    **获取**: trace_id
+    
+    ⚠️ 如果用户没提供时间，必须先询问！
+    
+    ### Step 2: 提取链路上下文
+    **工具**: `get_trace_context(trace_id)`
+    **获取**：
+    - scene_code（场景编码）
+    - experiments（命中的所有实验）
+    - fetcher_results（各字段的实际值）
+    
+    ### Step 3: 查询实验配置
+    **工具**: `get_experiment_detail(exp_id)`
+    **获取**: 各分组（A/B/C）的具体配置
+    
+    ## 诊断要点
+    ✅ **60%是AB实验**：优先看trace中的experiments字段
+    ✅ **trace是唯一真相源**：所有上下文信息都从trace获取
+    ✅ **不要猜测**：没有trace_id就无法继续
+    
+    # 输出格式
+    {format_instructions}
+  
+  metrics:
+    success_rate: 0.78
+    avg_steps: 6
+    avg_duration_ms: 8000
+
+
+# ============================================================================
+# 示例场景（保留用于测试）
+# ============================================================================
 
 play_game:
   name: "玩游戏"
   description: "示例SOP - 玩游戏场景"
+  category: "示例"
+  owner: "测试"
+  
   steps:
     - "确认用户想玩什么类型的游戏"
     - "推荐合适的游戏选项"
     - "提供游戏规则说明"
+  
+  tools: []
+  
+  planning_prompt: |
+    你是游戏助手，帮助用户选择和玩游戏。
+    
+    用户问题: {query}
+    
+    {format_instructions}
+  
+  metrics:
+    success_rate: 1.0
+    avg_steps: 3
+
 
 email_querycontact:
   name: "电子邮件查询联系人"
   description: "示例SOP - 邮件联系人查询"
+  category: "示例"
+  owner: "测试"
+  
   steps:
     - "确认要查询的联系人信息"
     - "在通讯录中搜索匹配的联系人"
     - "返回联系人的邮箱地址"
+  
+  tools: []
+  
+  planning_prompt: |
+    你是邮件助手，帮助查询联系人信息。
+    
+    用户问题: {query}
+    
+    {format_instructions}
+  
+  metrics:
+    success_rate: 0.95
+    avg_steps: 3
+
 
 alarm_set:
   name: "设置闹钟"
   description: "示例SOP - 设置闹钟场景"
+  category: "示例"
+  owner: "测试"
+  
   steps:
     - "确认闹钟时间"
     - "确认闹钟重复规则（每天/工作日/周末/单次）"
     - "设置闹钟并确认"
+  
+  tools: []
+  
+  planning_prompt: |
+    你是闹钟助手，帮助设置闹钟。
+    
+    用户问题: {query}
+    
+    {format_instructions}
+  
+  metrics:
+    success_rate: 0.99
+    avg_steps: 3

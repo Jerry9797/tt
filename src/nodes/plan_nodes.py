@@ -8,7 +8,7 @@ from langgraph.errors import GraphInterrupt
 import time
 import traceback
 
-from src.config.llm import q_max
+from src.config.llm import q_max, get_gpt_model, mt_llm
 from src.graph_state import AgentState, Plan
 from src.prompt.plan import planner_prompt_template
 from src.tools import check_low_star_merchant, check_sensitive_merchant
@@ -21,25 +21,46 @@ from src.models.execution_result import (
 
 
 def planning_node(state: AgentState):
-    """生成执行计划"""
+    """生成执行计划 - 根据intent动态选择prompt"""
     from langchain_core.messages import AIMessage
+    from src.config.sop_loader import get_sop_loader
     
     faq_query = state['faq_query']
+    intent = state.get('intent', 'default')
+    
+    # ⭐ 从SOPLoader获取planning prompt
+    sop_loader = get_sop_loader()
+    prompt_template_text = sop_loader.get_planning_prompt(intent)
+    
+    # 如果没有专业prompt，降级到通用prompt
+    if not prompt_template_text:
+        prompt_template_text = planner_prompt_template
+        print(f"[Planning] Using default prompt (no custom for '{intent}')")
+    else:
+        print(f"[Planning] Using custom prompt for '{intent}'")
+    
+    # 准备parser和格式化
     plan_parser = JsonOutputParser(pydantic_object=Plan)
-    planner_prompt = PromptTemplate(
-        template=planner_prompt_template,
-        input_variables=["query"],
-        partial_variables={"format_instructions": plan_parser.get_format_instructions()},
+    format_instructions = plan_parser.get_format_instructions()
+    
+    final_prompt = prompt_template_text.format(
+        query=faq_query,
+        format_instructions=format_instructions
     )
-
+    
+    # 调用LLM
+    planner_prompt = PromptTemplate(
+        template="{text}",
+        input_variables=["text"]
+    )
     chain = planner_prompt | q_max | JsonOutputParser()
-    result = chain.invoke({"query": faq_query, "past_steps": ""})
+    result = chain.invoke({"text": final_prompt})
     
     steps = result.get('steps', [])
     
     # 📝 添加计划生成消息
     plan_message = AIMessage(
-        content=f"📋 已生成执行计划，共{len(steps)}个步骤：\n" + 
+        content=f"📋 [{intent}] 已生成执行计划，共{len(steps)}个步骤:\n" + 
                 "\n".join([f"{i+1}. {step}" for i, step in enumerate(steps)])
     )
     
@@ -117,16 +138,16 @@ def plan_executor_node(state: AgentState):
     # 创建Agent
     agent = create_agent(
         system_prompt=system_prompt,
-        model=q_max,
+        model=mt_llm("gpt-4.1"),
         tools=[check_low_star_merchant, check_sensitive_merchant],
     )
     
     # 执行
     start_exec = time.time()
-    execution_result = agent.invoke()
+    execution_result = agent.invoke({"input": step_description})
     exec_duration = (time.time() - start_exec) * 1000
     
-    output = execution_result.get("output", "")
+    output = execution_result["messages"][-1].content
     
     # ⭐ 检查是否需要询问用户
     if "ask_human" in output.lower():
@@ -169,9 +190,55 @@ def plan_executor_node(state: AgentState):
     step_result.duration_ms = exec_duration
     step_result.agent_response = str(output)
     step_result.output_result = output[:500] if output else ""
-    step_result.tool_calls = tool_calls
     
+    # ⭐ 打印成功日志和工具结果
     print(f"[成功] 步骤 {current_step + 1} 完成,耗时 {exec_duration:.2f}ms")
+    
+    # ⭐ 如果有工具调用，打印工具结果
+    if tool_calls:
+        print(f"[工具调用] 本步骤调用了 {len(tool_calls)} 个工具:")
+        for tool_call in tool_calls:
+            print(f"  • {tool_call.tool_name}")
+            # 打印关键结果（如果有）
+            if tool_call.result:
+                try:
+                    import json
+                    result_data = tool_call.result if isinstance(tool_call.result, dict) else {}
+                    
+                    # 针对不同工具打印关键信息
+                    if 'check_sensitive_merchant' in tool_call.tool_name:
+                        is_violated = result_data.get('is_violated', 'N/A')
+                        risk_score = result_data.get('risk_score', 'N/A')
+                        risk_score_v2 = result_data.get('risk_score_v2', 'N/A')
+                        print(f"    → is_violated={is_violated}, risk_score={risk_score}, risk_score_v2={risk_score_v2}")
+                    
+                    elif 'check_low_star_merchant' in tool_call.tool_name:
+                        is_low_star = result_data.get('is_low_star', 'N/A')
+                        shop_star = result_data.get('shop_star', 'N/A')
+                        print(f"    → is_low_star={is_low_star}, shop_star={shop_star}")
+                    
+                    elif 'get_trace_context' in tool_call.tool_name:
+                        scene_code = result_data.get('scene_code', 'N/A')
+                        exp_count = len(result_data.get('experiments', []))
+                        print(f"    → scene_code={scene_code}, 命中{exp_count}个实验")
+                    
+                    elif 'get_visit_record' in tool_call.tool_name:
+                        count = result_data.get('count', 0)
+                        print(f"    → 找到{count}条访问记录")
+                    
+                    else:
+                        # 其他工具，打印通用信息
+                        # 取前3个键值对
+                        keys = list(result_data.keys())[:3]
+                        summary = {k: result_data[k] for k in keys if k in result_data}
+                        if summary:
+                            print(f"    → {summary}")
+                
+                except Exception as e:
+                    # 如果解析失败，跳过
+                    pass
+    
+    print()  # 空行
     
     # 📝 添加成功消息
     result_summary = step_result.output_result[:200] if step_result.output_result else "执行完成"
@@ -214,7 +281,7 @@ def build_executor_prompt(state: AgentState, step_index: int, task: str) -> str:
 要求:
 1. 严格按照当前步骤描述执行
 2. 如果需要调用工具,请直接调用
-3. 如果信息不足,输出 "ask_human"，询问人类
+3. 如果信息不足,输出 "ask_human"，询问人类。并拼接你需要询问的问题
 4. 不要重复前面步骤的工作
 """
 
@@ -303,6 +370,8 @@ def replan_node(state: AgentState) -> dict:
     2. 判断是否已收集足够信息可以回答用户
     3. 判断是否需要调整计划或重新规划
     4. 决定：继续执行 / 重新规划 / 结束并响应
+    
+    ⭐ SOP模式：只有执行完所有SOP步骤后才允许replan
     """
     from langchain_core.messages import AIMessage, SystemMessage
     from langchain_core.output_parsers import JsonOutputParser
@@ -312,6 +381,19 @@ def replan_node(state: AgentState) -> dict:
     plan = state.get("plan", [])
     current_step = state.get("current_step", 0)
     step_results = state.get("step_results", [])
+    is_sop_matched = state.get("is_sop_matched", False)
+    
+    # ⭐ 检查是否所有SOP步骤已执行完毕
+    # 通过比较step_results数量和原始plan长度判断
+    # 如果step_results中的步骤都来自原始plan，说明还在SOP阶段
+    sop_completed = False
+    if is_sop_matched and step_results:
+        # 检查是否有step_index >= len(plan)的结果（说明已经replan过）
+        max_step_index = max([r.step_index for r in step_results])
+        # 或者检查current_step是否已经到达或超过原始plan长度
+        if current_step >= len(plan):
+            sop_completed = True
+            print(f"[Replan] SOP已全部执行完毕 ({len(plan)}步），现在允许replan")
     
     # 如果还没有执行任何步骤，直接继续
     if not step_results:
@@ -331,12 +413,49 @@ def replan_node(state: AgentState) -> dict:
     # 剩余步骤
     remaining_steps = plan[current_step:] if current_step < len(plan) else []
     
-    # 构建重新规划的提示
-    replan_prompt = f"""你是一个智能规划评估助手。你的任务是评估当前执行情况，并决定下一步行动。
+    # ⭐ 根据SOP状态构建不同的提示
+    if is_sop_matched and not sop_completed:
+        # SOP执行中：不允许replan
+        replan_prompt = f"""你是一个SOP(标准操作流程)执行评估助手。当前正在执行SOP流程。
 
 用户问题：{query}
 
-原始计划：
+SOP固定流程：
+{chr(10).join([f"{i+1}. {step}" for i, step in enumerate(plan)])}
+
+已完成的步骤：
+{chr(10).join(completed_steps_summary)}
+
+剩余SOP步骤：
+{chr(10).join([f"{i+current_step+1}. {step}" for i, step in enumerate(remaining_steps)]) if remaining_steps else "无"}
+
+⚠️ 重要：当前在执行SOP流程，还有{len(remaining_steps)}个步骤未完成。
+
+请评估：
+1. 已完成的步骤是否收集了足够信息来回答用户（可提前结束SOP）？
+2. 如果信息足够，请生成最终响应
+3. 如果信息不足，必须继续执行剩余SOP步骤
+
+输出格式：
+{{
+    "decision": "respond" 或 "continue",
+    "reasoning": "你的推理过程",
+    "response": "最终响应（仅当decision为respond时）"
+}}
+
+决策说明：
+- respond: 已有足够信息，可以回答用户
+- continue: 继续执行剩余SOP步骤
+- ❌ 禁止replan（必须先完成所有SOP步骤）
+"""
+    else:
+        # 非SOP模式 或 SOP已完成：允许replan
+        sop_completed_note = "（SOP已全部执行完毕，可以重新规划）" if is_sop_matched else ""
+        replan_prompt = f"""你是一个智能规划评估助手。你的任务是评估当前执行情况，并决定下一步行动。{sop_completed_note}
+
+用户问题：{query}
+
+当前计划：
 {chr(10).join([f"{i+1}. {step}" for i, step in enumerate(plan)])}
 
 已完成的步骤：

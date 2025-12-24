@@ -1,26 +1,14 @@
 import json
 
-import yaml
-import os
-
 from langchain_core.messages import SystemMessage, HumanMessage
 
 from src.config.llm import q_intent
 from src.graph_state import AgentState
+from src.config.sop_loader import get_sop_loader
 
-# 加载 SOP 配置
-config_path = os.path.join(os.path.dirname(__file__), "../config/sop_config.yaml")
-
-try:
-    with open(config_path, 'r', encoding='utf-8') as f:
-        sop_config = yaml.safe_load(f)
-except Exception as e:
-    print(f"Warning: Failed to load sop_config.yaml: {e}")
-    sop_config = {}
-
-# 动态生成 intent_dict 和 sop_plans
-intent_dict = {key: val["name"] for key, val in sop_config.items()}
-sop_plans = {key: val["steps"] for key, val in sop_config.items()}
+# ⭐ 使用SOPLoader加载配置
+sop_loader = get_sop_loader()
+intent_dict = sop_loader.get_intent_dict()
 
 def sop_match_node(state: AgentState):
     """意图识别，是否命中SOP"""
@@ -39,9 +27,17 @@ def sop_match_node(state: AgentState):
     response = q_intent.invoke(messages)
     intent = response.content
     
+    print(f"[SOP Match] Query: {faq_query[:50]}")
+    print(f"[SOP Match] Identified intent: {intent}")
+    
     if intent and intent in intent_dict:
-        # 命中 SOP，注入预定义计划
-        plan = sop_plans.get(intent, [])
+        # ⭐ 从loader获取SOP配置
+        sop_config = sop_loader.get_sop(intent)
+        plan = sop_config.steps if sop_config else []
+        
+        print(f"[SOP Match] Matched SOP: {sop_config.name if sop_config else 'Unknown'}")
+        print(f"[SOP Match] Steps count: {len(plan)}")
+        
         return {
             "intent": intent, 
             "is_sop_matched": True,
@@ -49,4 +45,9 @@ def sop_match_node(state: AgentState):
             "current_step": 0
         }
     
-    return {"is_sop_matched": False}
+    # ⭐ 未匹配也返回intent
+    print(f"[SOP Match] No SOP matched, using default")
+    return {
+        "is_sop_matched": False,
+        "intent": "other"
+    }
