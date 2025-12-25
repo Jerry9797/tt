@@ -9,27 +9,32 @@ from .merchant_tools import (
     check_low_star_merchant,
 )
 
-# Trace链路工具（新增）
+# Trace链路工具
 from .trace_tools import (
-    # 核心工具
     get_visit_record_by_userid,
     get_trace_context,
-    
-    # 配置工具
     get_plan_id_by_scene_code,
     get_document_fetcher_config,
     get_experiment_detail,
-    
-    # 辅助工具
     get_current_time,
     parse_user_time_description,
-    
-    # 工具集
     CORE_TOOLS,
     CONFIG_TOOLS,
     MERCHANT_TOOLS,
     UTILITY_TOOLS,
-    ALL_TOOLS,
+    ALL_TOOLS as TRACE_ALL_TOOLS,
+)
+
+# ⭐ 代码分析工具（新增）
+from .code_analysis_tool import (
+    analyze_java_code,
+)
+
+# 合并所有工具
+ALL_TOOLS = (
+    [check_sensitive_merchant, check_low_star_merchant] +
+    TRACE_ALL_TOOLS +
+    [analyze_java_code]  # ⭐ 添加代码分析工具
 )
 
 __all__ = [
@@ -45,6 +50,9 @@ __all__ = [
     'get_experiment_detail',
     'get_current_time',
     'parse_user_time_description',
+    
+    # ⭐ 代码分析工具
+    'analyze_java_code',
     
     # 工具集
     'CORE_TOOLS',
