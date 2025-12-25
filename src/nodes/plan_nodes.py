@@ -413,77 +413,34 @@ def replan_node(state: AgentState) -> dict:
     # 剩余步骤
     remaining_steps = plan[current_step:] if current_step < len(plan) else []
     
-    # ⭐ 根据SOP状态构建不同的提示
+    # ⭐ 从prompt模块获取提示词模板（不含逻辑）
+    from src.prompt.prompt import (
+        get_replan_sop_in_progress_prompt_template,
+        get_replan_general_prompt_template
+    )
+    
+    # ⭐ 组装逻辑在这里（调用方负责）
     if is_sop_matched and not sop_completed:
-        # SOP执行中：不允许replan
-        replan_prompt = f"""你是一个SOP(标准操作流程)执行评估助手。当前正在执行SOP流程。
-
-用户问题：{query}
-
-SOP固定流程：
-{chr(10).join([f"{i+1}. {step}" for i, step in enumerate(plan)])}
-
-已完成的步骤：
-{chr(10).join(completed_steps_summary)}
-
-剩余SOP步骤：
-{chr(10).join([f"{i+current_step+1}. {step}" for i, step in enumerate(remaining_steps)]) if remaining_steps else "无"}
-
-⚠️ 重要：当前在执行SOP流程，还有{len(remaining_steps)}个步骤未完成。
-
-请评估：
-1. 已完成的步骤是否收集了足够信息来回答用户（可提前结束SOP）？
-2. 如果信息足够，请生成最终响应
-3. 如果信息不足，必须继续执行剩余SOP步骤
-
-输出格式：
-{{
-    "decision": "respond" 或 "continue",
-    "reasoning": "你的推理过程",
-    "response": "最终响应（仅当decision为respond时）"
-}}
-
-决策说明：
-- respond: 已有足够信息，可以回答用户
-- continue: 继续执行剩余SOP步骤
-- ❌ 禁止replan（必须先完成所有SOP步骤）
-"""
+        # SOP执行中：使用SOP模板
+        prompt_template = get_replan_sop_in_progress_prompt_template()
+        replan_prompt = prompt_template.format(
+            query=query,
+            plan_list="\n".join([f"{i+1}. {step}" for i, step in enumerate(plan)]),
+            completed_steps="\n".join(completed_steps_summary),
+            remaining_steps="\n".join([f"{i+current_step+1}. {step}" for i, step in enumerate(remaining_steps)]) if remaining_steps else "无",
+            remaining_count=len(remaining_steps)
+        )
     else:
-        # 非SOP模式 或 SOP已完成：允许replan
-        sop_completed_note = "（SOP已全部执行完毕，可以重新规划）" if is_sop_matched else ""
-        replan_prompt = f"""你是一个智能规划评估助手。你的任务是评估当前执行情况，并决定下一步行动。{sop_completed_note}
-
-用户问题：{query}
-
-当前计划：
-{chr(10).join([f"{i+1}. {step}" for i, step in enumerate(plan)])}
-
-已完成的步骤：
-{chr(10).join(completed_steps_summary)}
-
-剩余步骤：
-{chr(10).join([f"{i+current_step+1}. {step}" for i, step in enumerate(remaining_steps)]) if remaining_steps else "无"}
-
-请评估：
-1. 已完成的步骤是否收集了足够的信息来回答用户问题？
-2. 如果信息足够，请生成最终响应
-3. 如果信息不足：
-   - 剩余步骤是否合理？如果合理，继续执行
-   - 剩余步骤不合理或需要调整？生成新的计划
-
-输出格式：
-{{
-    "decision": "respond" 或 "continue" 或 "replan",
-    "reasoning": "你的推理过程",
-    "response": "最终响应（仅当decision为respond时）",
-    "new_plan": ["新步骤1", "新步骤2"] （仅当decision为replan时）
-}}
-
-决策说明：
-- respond: 已有足够信息，可以回答用户
-- continue: 继续执行剩余计划
-- replan: 需要调整计划或重新规划
-"""
+        # 非SOP或SOP已完成：使用通用模板
+        prompt_template = get_replan_general_prompt_template()
+        sop_note = "（SOP已全部执行完毕，可以重新规划）" if is_sop_matched else ""
+        replan_prompt = prompt_template.format(
+            query=query,
+            sop_note=sop_note,
+            plan_list="\n".join([f"{i+1}. {step}" for i, step in enumerate(plan)]),
+            completed_steps="\n".join(completed_steps_summary),
+            remaining_steps="\n".join([f"{i+current_step+1}. {step}" for i, step in enumerate(remaining_steps)]) if remaining_steps else "无"
+        )
 
     # 调用LLM进行决策
     messages = [

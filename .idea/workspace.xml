@@ -4,18 +4,13 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="8695e368-970a-4ca6-87bd-0db42f859791" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/src/mcp/client_demo.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/mcp/demo.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/prompt/prompt.py" afterDir="false" />
+    <list default="true" id="8695e368-970a-4ca6-87bd-0db42f859791" name="Changes" comment="add">
       <change beforePath="$PROJECT_DIR$/.env" beforeDir="false" afterPath="$PROJECT_DIR$/.env" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/config/sop_config.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/src/config/sop_config.yaml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/graph_state.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/graph_state.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/nodes/intent_nodes.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/nodes/intent_nodes.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/api/app.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/api/app.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/nodes/node.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/nodes/build_graph.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/nodes/plan_nodes.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/nodes/plan_nodes.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/nodes/query_nodes.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/nodes/query_nodes.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/tools/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/tools/__init__.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/prompt/prompt.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/prompt/prompt.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -36,6 +31,7 @@
   "keyToString": {
     "Python.test_real_ai_shop_no_call.executor": "Debug",
     "git-widget-placeholder": "main",
+    "mcopilot_agent_context_state_catpaw_code_repo_config": "{\"rules\":[],\"mcpServers\":\"\",\"lastUpdated\":\"2025-12-25T06:16:56.690576Z\"}",
     "node.js.selected.package.tslint": "(autodetect)"
   }
 }]]></component>
@@ -73,7 +69,28 @@
     <configuration />
   </component>
   <component name="TaskManager">
+    <task id="LOCAL-00001" summary="add">
+      <option name="closed" value="true" />
+      <created>1766576238194</created>
+      <option name="number" value="00001" />
+      <option name="presentableId" value="LOCAL-00001" />
+      <option name="project" value="LOCAL" />
+      <updated>1766576238194</updated>
+    </task>
+    <task id="LOCAL-00002" summary="add">
+      <option name="closed" value="true" />
+      <created>1766576277259</created>
+      <option name="number" value="00002" />
+      <option name="presentableId" value="LOCAL-00002" />
+      <option name="project" value="LOCAL" />
+      <updated>1766576277260</updated>
+    </task>
+    <option name="localTasksCounter" value="3" />
     <servers />
+  </component>
+  <component name="VcsManagerConfiguration">
+    <MESSAGE value="add" />
+    <option name="LAST_COMMIT_MESSAGE" value="add" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>

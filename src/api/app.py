@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from typing import List, Optional, Any, Dict
 
 from src.graph_state import AgentState
-from src.nodes.node import build_graph
+from src.nodes.build_graph import build_graph
 
 app = FastAPI(
     title="TT Assistant API",
