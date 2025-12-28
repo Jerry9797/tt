@@ -8,7 +8,7 @@ from mcp.client.sse import sse_client
 async def run_client():
     # ---------------------------------------------------------
     # 场景 1: 连接 API Server
-    # 路径分析: http://localhost:8000 + /api (Mount路径) + /sse (FastMCP默认SSE路径)
+    # 路径分析: http://localhost:8000 + /fastapi (Mount路径) + /sse (FastMCP默认SSE路径)
     # ---------------------------------------------------------
     print("--- 正在连接 API Server ---")
     async with sse_client(url="http://localhost:8000/api/sse") as (read, write):
