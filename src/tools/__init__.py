@@ -30,11 +30,21 @@ from .code_analysis_tool import (
     analyze_java_code,
 )
 
+# ⭐ 用户日志工具（新增）
+from .user_log_tool import (
+    search_user_access_history,
+    restore_user_scene,
+    analyze_recall_chain,
+    parse_user_query_params,
+    USER_LOG_TOOLS,
+)
+
 # 合并所有工具
 ALL_TOOLS = (
     [check_sensitive_merchant, check_low_star_merchant] +
     TRACE_ALL_TOOLS +
-    [analyze_java_code]  # ⭐ 添加代码分析工具
+    [analyze_java_code] +
+    USER_LOG_TOOLS  # ⭐ 添加用户日志工具组
 )
 
 __all__ = [
@@ -51,8 +61,15 @@ __all__ = [
     'get_current_time',
     'parse_user_time_description',
     
-    # ⭐ 代码分析工具
+    # 代码分析工具
     'analyze_java_code',
+    
+    # ⭐ 用户日志工具
+    'search_user_access_history',
+    'restore_user_scene',
+    'analyze_recall_chain',
+    'parse_user_query_params',
+    'USER_LOG_TOOLS',
     
     # 工具集
     'CORE_TOOLS',

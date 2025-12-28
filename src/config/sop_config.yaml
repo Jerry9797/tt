@@ -48,7 +48,8 @@ shop_them_no_call:
        - 经纬度配置错误、超出服务范围
     
     4. **营业状态异常** (约10%)
-       - 暂停营业、永久关闭
+       - 不在营业时间
+       - 工具: select_shop_state
     
     ## 诊断策略
     **标准流程**:
@@ -75,7 +76,7 @@ shop_them_no_call:
 
 display_field_missing:
   name: "展示字段缺失"
-  description: "商户反馈某些展示字段（如距离、评分等）不展示的AB实验排查"
+  description: "商户反馈某些展示字段（如距离、评分等）不展示"
   category: "展示问题"
   owner: "前端展示组"
   
@@ -149,14 +150,14 @@ display_field_missing:
 
 
 # ============================================================================
-# 示例场景（保留用于测试）
+# 下挂问题
 # ============================================================================
 
 play_game:
-  name: "玩游戏"
-  description: "示例SOP - 玩游戏场景"
-  category: "示例"
-  owner: "测试"
+  name: "下挂问题"
+  description: "下挂问题"
+  category: "下挂问题"
+  owner: "下挂问题"
   
   steps:
     - "确认用户想玩什么类型的游戏"
@@ -177,51 +178,26 @@ play_game:
     avg_steps: 3
 
 
-email_querycontact:
-  name: "电子邮件查询联系人"
-  description: "示例SOP - 邮件联系人查询"
-  category: "示例"
-  owner: "测试"
-  
-  steps:
-    - "确认要查询的联系人信息"
-    - "在通讯录中搜索匹配的联系人"
-    - "返回联系人的邮箱地址"
-  
-  tools: []
-  
-  planning_prompt: |
-    你是邮件助手，帮助查询联系人信息。
-    
-    用户问题: {query}
-    
-    {format_instructions}
-  
-  metrics:
-    success_rate: 0.95
-    avg_steps: 3
-
-
 alarm_set:
   name: "设置闹钟"
   description: "示例SOP - 设置闹钟场景"
   category: "示例"
   owner: "测试"
-  
+
   steps:
     - "确认闹钟时间"
     - "确认闹钟重复规则（每天/工作日/周末/单次）"
     - "设置闹钟并确认"
-  
+
   tools: []
-  
+
   planning_prompt: |
     你是闹钟助手，帮助设置闹钟。
     
     用户问题: {query}
     
     {format_instructions}
-  
+
   metrics:
     success_rate: 0.99
     avg_steps: 3

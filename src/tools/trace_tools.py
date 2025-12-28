@@ -41,7 +41,7 @@ def get_visit_record_by_userid(
                     "user_id": "10086",
                     "timestamp": "2024-12-24 12:30:15",
                     "scene_code": "mt_waimai_shop_list",
-                    "api_path": "/api/v1/channel/recommend"
+                    "api_path": "/fastapi/v1/channel/recommend"
                 }
             ]
         }
@@ -66,7 +66,7 @@ def get_visit_record_by_userid(
                 "timestamp": start_time,
                 "scene_code": "mt_waimai_shop_list",
                 "platform": platform,
-                "api_path": "/api/v1/channel/recommend",
+                "api_path": "/fastapi/v1/channel/recommend",
                 "request_ip": "192.168.1.100",
                 "device_type": "iOS"
             }

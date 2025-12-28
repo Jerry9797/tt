@@ -1,17 +1,24 @@
 from langgraph.types import Command, interrupt
 
 from langchain.agents import create_agent
+
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.prompts import PromptTemplate
 from datetime import datetime
-from langgraph.errors import GraphInterrupt
 import time
-import traceback
 
-from src.config.llm import q_max, get_gpt_model, mt_llm
+from src.config.llm import q_max, get_gpt_model, mt_llm, q_plus
 from src.graph_state import AgentState, Plan
 from src.prompt.plan import planner_prompt_template
-from src.tools import check_low_star_merchant, check_sensitive_merchant
+from src.tools import (
+    ALL_TOOLS,
+    check_low_star_merchant, 
+    check_sensitive_merchant,
+    search_user_access_history,
+    restore_user_scene,
+    analyze_recall_chain,
+    parse_user_query_params
+)
 from src.models.execution_result import (
     StepExecutionResult,
     StepStatus,
@@ -98,26 +105,40 @@ def plan_executor_node(state: AgentState):
     
     # 📝 添加消息
     from langchain_core.messages import AIMessage
+    from langchain_core.messages import HumanMessage # Added for new logic
     messages_to_add = []
     
-    # ⭐ 检查是否是恢复执行（从ask_human返回）
-    # 通过检查messages中的最后一条HumanMessage来判断
-    messages = state.get("messages", [])
+    # ⭐ 检查是否有用户刚刚的回复（用于恢复）
     user_input = None
+    messages = state.get("messages", [])
     
-    if messages and len(messages) >= 2:
-        # 检查最后两条消息是否是 AIMessage(问题) + HumanMessage(回复)
-        if (messages[-2].__class__.__name__ == "AIMessage" and 
-            "⏸️" in messages[-2].content and
-            messages[-1].__class__.__name__ == "HumanMessage"):
-            user_input = messages[-1].content
-            print(f"[Executor] 检测到用户回复: {user_input}")
+    # 改进逻辑：倒序查找最近的一次 [AIMessage(⏸️) -> ... -> HumanMessage] 模式
+    # 允许中间由 ReplanNode 插入的其他 AIMessage
+    
+    last_ask_index = -1
+    for i in range(len(messages) - 1, -1, -1):
+        msg = messages[i]
+        if isinstance(msg, AIMessage) and "⏸️" in str(msg.content):
+            last_ask_index = i
+            break
             
-            # 添加恢复消息
-            resume_message = AIMessage(
-                content=f"▶️ 收到您的回复，继续执行步骤 {current_step + 1}"
-            )
-            messages_to_add.append(resume_message)
+    if last_ask_index != -1:
+        # 找到了最近的提问，检查其后是否有 HumanMessage
+        # 通常 HumanMessage 应该在 Ask 之后
+        for i in range(last_ask_index + 1, len(messages)):
+            if isinstance(messages[i], HumanMessage):
+                user_input = messages[i].content
+                # 找到第一个 HumanMessage 即停止，视为回复
+                break
+
+    if user_input:
+        print(f"[Executor] 检测到用户回复: {user_input}")
+        
+        # 添加恢复消息
+        resume_message = AIMessage(
+            content=f"▶️ 收到您的回复，继续执行步骤 {current_step + 1}"
+        )
+        messages_to_add.append(resume_message)
     
     if not user_input:
         # 首次执行此步骤，添加开始消息
@@ -131,20 +152,24 @@ def plan_executor_node(state: AgentState):
     # 准备Agent系统提示
     system_prompt = build_executor_prompt(state, current_step, step_description)
     
-    # ⭐ 如果有用户输入，注入到prompt中
-    if user_input:
-        system_prompt += f"\n\n【用户提供的信息】\n{user_input}\n请使用这个信息完成当前任务。"
+    # 执行
+    # ⭐ 如果有用户输入，已经包含在chat_history中，不需要重复注入prompt
     
     # 创建Agent
     agent = create_agent(
         system_prompt=system_prompt,
-        model=mt_llm("gpt-4.1"),
-        tools=[check_low_star_merchant, check_sensitive_merchant],
+        # model=mt_llm("gpt-4.1"),
+        model=q_plus,
+        tools=ALL_TOOLS,
     )
     
     # 执行
     start_exec = time.time()
-    execution_result = agent.invoke({"input": step_description})
+    # ⭐ 传入chat_history以便Agent了解上下文
+    execution_result = agent.invoke({
+        "input": step_description,
+        # "chat_history": state.get("messages", [])
+    })
     exec_duration = (time.time() - start_exec) * 1000
     
     output = execution_result["messages"][-1].content
@@ -217,6 +242,26 @@ def plan_executor_node(state: AgentState):
                         shop_star = result_data.get('shop_star', 'N/A')
                         print(f"    → is_low_star={is_low_star}, shop_star={shop_star}")
                     
+                    # ⭐ 用户日志工具结果打印
+                    elif 'search_user_access_history' in tool_call.tool_name:
+                        record_count = result_data.get('count', 0)
+                        print(f"    → 找到{record_count}条访问记录")
+
+                    elif 'restore_user_scene' in tool_call.tool_name:
+                        if 'error' in result_data:
+                            print(f"    → 还原失败: {result_data['error']}")
+                        else:
+                            merchant_count = len(result_data.get('merchants', []))
+                            click_count = len(result_data.get('click_records', []))
+                            print(f"    → 展示{merchant_count}个商户, {click_count}次点击, 页面: {result_data.get('display_info', {}).get('page')}")
+
+                    elif 'analyze_recall_chain' in tool_call.tool_name:
+                        issue = result_data.get('root_cause', 'N/A')
+                        print(f"    → 根因={issue}")
+                    
+                    elif 'parse_user_query_params' in tool_call.tool_name:
+                        print(f"    → 提取参数: {result_data}")
+                    
                     elif 'get_trace_context' in tool_call.tool_name:
                         scene_code = result_data.get('scene_code', 'N/A')
                         exp_count = len(result_data.get('experiments', []))
@@ -269,6 +314,16 @@ def build_executor_prompt(state: AgentState, step_index: int, task: str) -> str:
             for i, r in enumerate(previous_results[-3:])  # 只显示最近3步
         ])
 
+    # ⭐ 将对话历史也放入System Prompt中
+    chat_history_str = ""
+    messages = state.get("messages", [])
+    if messages:
+        chat_history_str = "\n".join([
+            f"{msg.type}: {msg.content}" 
+            for msg in messages 
+            if msg.type in ['human', 'ai']
+        ])
+
     return f"""你是一个严格的计划执行节点。
 你的职责: 仅执行当前步骤,不进行额外推理。
 
@@ -277,6 +332,9 @@ def build_executor_prompt(state: AgentState, step_index: int, task: str) -> str:
 
 前序步骤上下文:
 {context or '无'}
+
+对话历史:
+{chat_history_str or '无'}
 
 要求:
 1. 严格按照当前步骤描述执行
@@ -453,24 +511,46 @@ def replan_node(state: AgentState) -> dict:
         
         # 解析LLM响应
         import json
+        import re
+        
+        decision_data = None
+        
+        # 策略1: 直接解析 result.content
         try:
             decision_data = json.loads(result.content)
-        except:
-            # 如果JSON解析失败，使用JsonOutputParser
-            from langchain_core.output_parsers import StrOutputParser
-            parser = StrOutputParser()
-            content = parser.invoke(result)
-            # 尝试从content中提取JSON
-            import re
-            json_match = re.search(r'\{.*\}', content, re.DOTALL)
-            if json_match:
-                decision_data = json.loads(json_match.group())
-            else:
-                # 默认继续执行
-                decision_data = {
-                    "decision": "continue",
-                    "reasoning": "无法解析LLM响应，默认继续执行"
-                }
+        except json.JSONDecodeError:
+            pass
+        
+        # 策略2: 使用正则提取 JSON 块
+        if not decision_data:
+            try:
+                json_match = re.search(r'\{.*\}', result.content, re.DOTALL)
+                if json_match:
+                    json_str = json_match.group()
+                    # 尝试修复常见的 JSON 格式问题
+                    # 1. 移除 JSON 中的注释
+                    json_str = re.sub(r'//.*?\n|/\*.*?\*/', '', json_str, flags=re.DOTALL)
+                    # 2. 移除尾随逗号
+                    json_str = re.sub(r',(\s*[}\]])', r'\1', json_str)
+                    decision_data = json.loads(json_str)
+            except (json.JSONDecodeError, AttributeError) as e:
+                print(f"[Replan] JSON 解析失败: {e}")
+        
+        # 策略3: 使用 LangChain 的 JsonOutputParser 强制解析
+        if not decision_data:
+            try:
+                parser = JsonOutputParser()
+                decision_data = parser.invoke(result)
+            except Exception as e:
+                print(f"[Replan] JsonOutputParser 失败: {e}")
+        
+        # 最后的兜底: 默认继续执行
+        if not decision_data:
+            print(f"[Replan] 无法解析响应，原始内容: {result.content[:200]}")
+            decision_data = {
+                "decision": "continue",
+                "reasoning": "无法解析LLM响应，默认继续执行"
+            }
         
         decision = decision_data.get("decision", "continue")
         reasoning = decision_data.get("reasoning", "")

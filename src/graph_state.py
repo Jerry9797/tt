@@ -43,8 +43,8 @@ class AgentState(TypedDict):
     execution_summary: Annotated[Optional[PlanExecutionSummary], overwrite]
     
     # ⭐ 新增: Human-in-the-Loop 通用字段
-    need_clarification: bool # 是否中断
-    return_to: str # 发出中断请求的node
+    need_clarification: Annotated[bool, overwrite] # 是否中断
+    return_to: Annotated[str, overwrite] # 发出中断请求的node
 
 
 
