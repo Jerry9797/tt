@@ -7,8 +7,11 @@
     <list default="true" id="8695e368-970a-4ca6-87bd-0db42f859791" name="Changes" comment="add">
       <change beforePath="$PROJECT_DIR$/.env" beforeDir="false" afterPath="$PROJECT_DIR$/.env" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/fastapi/app.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/fastapi/app.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/mcp/mcp_manager.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/mcp/mcp_manager.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/models/execution_result.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/models/execution_result.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/nodes/build_graph.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/nodes/build_graph.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/nodes/plan_nodes.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/nodes/plan_nodes.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/ui/app.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ui/app.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -262,9 +265,17 @@
       <option name="presentableId" value="Default" />
       <updated>1767000591094</updated>
       <workItem from="1767000592308" duration="388000" />
-      <workItem from="1767001120210" duration="305000" />
+      <workItem from="1767001120210" duration="1421000" />
     </task>
-    <option name="localTasksCounter" value="7" />
+    <task id="LOCAL-00007" summary="add">
+      <option name="closed" value="true" />
+      <created>1767001581626</created>
+      <option name="number" value="00007" />
+      <option name="presentableId" value="LOCAL-00007" />
+      <option name="project" value="LOCAL" />
+      <updated>1767001581626</updated>
+    </task>
+    <option name="localTasksCounter" value="8" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -280,7 +291,7 @@
       <breakpoints>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/src/nodes/plan_nodes.py</url>
-          <line>388</line>
+          <line>404</line>
           <option name="timeStamp" value="41" />
         </line-breakpoint>
       </breakpoints>
@@ -290,8 +301,8 @@
     <SUITE FILE_PATH="coverage/tt$node.coverage" NAME="node Coverage Results" MODIFIED="1766216906691" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/src" />
     <SUITE FILE_PATH="coverage/tt$query_rewrite__1_.coverage" NAME="node Coverage Results" MODIFIED="1765121624996" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/src" />
     <SUITE FILE_PATH="coverage/tt$test_real_ai_shop_no_call.coverage" NAME="test_real_ai_shop_no_call Coverage Results" MODIFIED="1766559731762" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/tests" />
-    <SUITE FILE_PATH="coverage/tt$server_demo.coverage" NAME="server_demo Coverage Results" MODIFIED="1766990866452" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/src/mcp" />
-    <SUITE FILE_PATH="coverage/tt$streamlit.coverage" NAME="streamlit Coverage Results" MODIFIED="1766999596457" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/tt$server_demo.coverage" NAME="server_demo Coverage Results" MODIFIED="1767010122180" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/src/mcp" />
+    <SUITE FILE_PATH="coverage/tt$streamlit.coverage" NAME="streamlit Coverage Results" MODIFIED="1767010337635" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/tt$client_demo.coverage" NAME="client_demo Coverage Results" MODIFIED="1766979272573" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/src/mcp" />
     <SUITE FILE_PATH="coverage/tt$query_rewrite.coverage" NAME="query_rewrite Coverage Results" MODIFIED="1764968490462" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/src/node" />
     <SUITE FILE_PATH="coverage/tt$test_messages_flow.coverage" NAME="test_messages_flow Coverage Results" MODIFIED="1766392967475" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/examples" />

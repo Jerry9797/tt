@@ -23,7 +23,7 @@ async def build_graph(init_mcp: bool = True):
         try:
             await init_mcp_manager()
             # print("[Graph] MCP 管理器初始化完成")
-        except Exception as e:
+        except (Exception, BaseException) as e:
             print(f"[Graph] MCP 初始化失败: {e}，继续使用非 MCP 工具")
     
     graph = StateGraph(AgentState)

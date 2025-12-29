@@ -33,6 +33,7 @@ class StepResultResponse(BaseModel):
     output: Optional[str] = None
     error: Optional[str] = None
     tool_calls: List[Dict[str, Any]] = []
+    token_usage: Optional[Dict[str, int]] = None
 
 # Response Model
 class ChatResponse(BaseModel):
@@ -140,7 +141,8 @@ async def chat(request: ChatRequest):
                         "result": str(tc.result) if tc.result else None,
                         "error": tc.error,
                         "duration_ms": tc.duration_ms
-                    } for tc in r.tool_calls]
+                    } for tc in r.tool_calls],
+                    token_usage=r.token_usage.dict() if r.token_usage else None
                 )
                 for r in result["step_results"]
             ]
@@ -160,7 +162,8 @@ async def chat(request: ChatRequest):
                 "overall_status": summary.overall_status.value if hasattr(summary.overall_status, 'value') else str(summary.overall_status),
                 "total_duration_ms": summary.total_duration_ms,
                 "start_time": summary.start_time.isoformat() if summary.start_time else None,
-                "end_time": summary.end_time.isoformat() if summary.end_time else None
+                "end_time": summary.end_time.isoformat() if summary.end_time else None,
+                "token_usage": summary.total_token_usage.dict() if summary.total_token_usage else None
             }
 
         return ChatResponse(
@@ -229,7 +232,8 @@ async def get_execution_history(thread_id: str):
                         "result": str(tc.result) if tc.result else None,
                         "error": tc.error,
                         "duration_ms": tc.duration_ms
-                    } for tc in r.tool_calls]
+                    } for tc in r.tool_calls],
+                    "token_usage": r.token_usage.dict() if r.token_usage else None
                 }
                 for r in step_results
             ],
@@ -242,9 +246,11 @@ async def get_execution_history(thread_id: str):
                 "completed_steps": execution_summary.completed_steps,
                 "failed_steps": execution_summary.failed_steps,
                 "overall_status": execution_summary.overall_status.value if hasattr(execution_summary.overall_status, 'value') else str(execution_summary.overall_status),
+                "overall_status": execution_summary.overall_status.value if hasattr(execution_summary.overall_status, 'value') else str(execution_summary.overall_status),
                 "total_duration_ms": execution_summary.total_duration_ms,
                 "start_time": execution_summary.start_time.isoformat() if execution_summary.start_time else None,
-                "end_time": execution_summary.end_time.isoformat() if execution_summary.end_time else None
+                "end_time": execution_summary.end_time.isoformat() if execution_summary.end_time else None,
+                "token_usage": execution_summary.total_token_usage.dict() if execution_summary.total_token_usage else None
             } if execution_summary else None
         }
     except HTTPException:
