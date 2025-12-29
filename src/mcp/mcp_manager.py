@@ -67,8 +67,13 @@ class MCPToolManager:
             print(f"[MCP Manager] ✅ 成功连接到 {server_name}")
             return True
         
-        except Exception as e:
-            print(f"[MCP Manager] ❌ 连接 {server_name} 失败: {e}")
+        except (Exception, BaseException) as e:
+            # Handle BaseExceptionGroup from anyio/httpx
+            error_msg = str(e)
+            if "ConnectError" in error_msg or "connection attempts failed" in error_msg:
+                 print(f"[MCP Manager] ❌ 连接 {server_name} 失败: 无法连接到服务器 (Connection Refused)")
+            else:
+                 print(f"[MCP Manager] ❌ 连接 {server_name} 失败: {e}")
             return False
     
     async def load_tools(self, server_name: str) -> List[BaseTool]:

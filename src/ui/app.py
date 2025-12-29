@@ -332,6 +332,20 @@ if prompt := st.chat_input("Input your query..."):
                 if result.intent:
                     reply_parts.append(f"**Intent:** `{result.intent}`")
                 
+                # ⭐ 显示执行统计
+                if result.execution_summary:
+                    summary = result.execution_summary
+                    stats_parts = []
+                    if "total_duration_ms" in summary and summary["total_duration_ms"] is not None:
+                         stats_parts.append(f"⏱️ {summary['total_duration_ms']:.0f}ms")
+                    
+                    if "token_usage" in summary and summary["token_usage"]:
+                        usage = summary["token_usage"]
+                        stats_parts.append(f"🪙 {usage.get('total_tokens', 0)} (In: {usage.get('prompt_tokens', 0)}, Out: {usage.get('completion_tokens', 0)})")
+                    
+                    if stats_parts:
+                        reply_parts.append(" | ".join(stats_parts))
+                
                 if not reply_parts:
                     reply_text = f"Result: {result.json()}"
                 else:

@@ -23,7 +23,8 @@ from src.models.execution_result import (
     StepExecutionResult,
     StepStatus,
     ToolCall,
-    PlanExecutionSummary
+    PlanExecutionSummary,
+    TokenUsage
 )
 
 
@@ -181,6 +182,20 @@ async def plan_executor_node(state: AgentState):
     })
     exec_duration = (time.time() - start_exec) * 1000
     
+    # ⭐ 提取 Token Usage
+    token_usage = TokenUsage()
+    if "messages" in execution_result and execution_result["messages"]:
+        last_msg = execution_result["messages"][-1]
+        if hasattr(last_msg, "response_metadata"):
+            usage_data = last_msg.response_metadata.get("token_usage", {})
+            if usage_data:
+                token_usage = TokenUsage(
+                    prompt_tokens=usage_data.get("prompt_tokens", 0),
+                    completion_tokens=usage_data.get("completion_tokens", 0),
+                    total_tokens=usage_data.get("total_tokens", 0)
+                )
+                print(f"[资源] Token消耗: {token_usage.total_tokens} (Prompt: {token_usage.prompt_tokens}, Completion: {token_usage.completion_tokens})")
+    
     output = execution_result["messages"][-1].content
     
     # ⭐ 检查是否需要询问用户
@@ -222,6 +237,7 @@ async def plan_executor_node(state: AgentState):
     step_result.status = StepStatus.SUCCESS
     step_result.end_time = datetime.now()
     step_result.duration_ms = exec_duration
+    step_result.token_usage = token_usage
     step_result.agent_response = str(output)
     step_result.output_result = output[:500] if output else ""
     
@@ -404,6 +420,13 @@ def finalize_execution(state: AgentState) -> dict:
         final_response=state.get("response", "")
     )
 
+    # ⭐ 聚合 Token Usage
+    total_tokens = TokenUsage()
+    for res in step_results:
+        if res.token_usage:
+            total_tokens.add(res.token_usage)
+    summary.total_token_usage = total_tokens
+
     if step_results:
         summary.start_time = step_results[0].start_time
         summary.end_time = step_results[-1].end_time
@@ -419,7 +442,8 @@ def finalize_execution(state: AgentState) -> dict:
                 f"• 总计: {summary.total_steps} 步\n" +
                 f"• 成功: {summary.completed_steps} 步\n" +
                 f"• 失败: {summary.failed_steps} 步\n" +
-                f"• 总耗时: {summary.total_duration_ms:.0f}ms"
+                f"• 总耗时: {summary.total_duration_ms:.0f}ms\n" +
+                f"• Token消耗: {summary.total_token_usage.total_tokens}"
     )
 
     return {
