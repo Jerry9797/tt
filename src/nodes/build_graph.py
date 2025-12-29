@@ -1,11 +1,9 @@
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
-# from langgraph.checkpoint.redis import RedisSaver # Optional: keep if needed for reference, but we are switching to MySQL
-from langgraph.checkpoint.mysql.pymysql import PyMySQLSaver
-from langgraph.store.mysql import PyMySQLStore
+from langgraph.checkpoint.mysql.aio import AIOMySQLSaver
 
 from src.config.redis import client
-from src.config.mysql import get_connection
+from src.config.mysql import get_connection, get_connection_string
 from src.utils.mysql_store import MySQLStore
 from src.graph_state import AgentState
 from src.nodes.query_rewrite_node import query_rewrite_node
@@ -18,7 +16,18 @@ from src.nodes.plan_nodes import planning_node, plan_executor_node, replan_node
 _checkpointer = None
 _store = None
 
-def build_graph():
+async def build_graph(init_mcp: bool = True):
+    # ⭐ 初始化 MCP 工具管理器（异步）
+    if init_mcp:
+        import asyncio
+        from src.mcp import init_mcp_manager
+        
+        try:
+            await init_mcp_manager()
+            # print("[Graph] MCP 管理器初始化完成")
+        except Exception as e:
+            print(f"[Graph] MCP 初始化失败: {e}，继续使用非 MCP 工具")
+    
     graph = StateGraph(AgentState)
     graph.add_node("query_rewrite_node", query_rewrite_node)
     graph.add_node("ask_human", ask_human)
@@ -66,44 +75,23 @@ def build_graph():
                                 })
 
     # Initialize persistence
-    global _checkpointer, _store
+    import aiomysql
     
-    if _checkpointer is None:
-        if PyMySQLSaver:
-            try:
-                # Create dedicated connections for checkpointer and store
-                conn_cp = get_connection()
-                _checkpointer = PyMySQLSaver(conn_cp)
-                _checkpointer.setup()
-                print("[Graph] Initialized MySQL Checkpointer")
-            except Exception as e:
-                print(f"[Graph] Failed to initialize MySQL Checkpointer: {e}")
-                _checkpointer = MemorySaver()
-        else:
-            _checkpointer = MemorySaver()
-            print("[Graph] Initialized MemorySaver (MySQL module missing)")
-            
-    if _store is None:
-        try:
-            # MySQLStore handles its own connection creation if not provided, 
-            # but we can pass one to be explicit or use the same config.
-            # We'll let it create its own using the config defaults.
-            _store = MySQLStore() 
-            print("[Graph] Initialized MySQL Store")
-        except Exception as e:
-            print(f"[Graph] Failed to initialize MySQL Store: {e}")
-            # Fallback to simple in-memory store if needed, or None
-            # graph.compile(store=...) usually accepts a BaseStore. 
-            # If failed, we might pass True (MemoryStore) or None.
-            _store = None # Let LangGraph use default compatible store or raise error
-            # Or use InMemoryStore if available? LangGraph defaults to in-memory if store=True?
-            # actually store=True enables InMemoryStore.
-            
-    # If store init failed, pass True to fallback to InMemory, or pass None to disable?
-    # Original code had store=True.
-    store_arg = _store if _store else True
+    conn_str = await get_connection_string()
+    # 解析连接参数
+    db_params = AIOMySQLSaver.parse_conn_string(conn_str)
+    try:
+        conn = await aiomysql.connect(**db_params, autocommit=True)
+        checkpointer = AIOMySQLSaver(conn=conn)
+        # print(f"[Graph] Initialized AIOMySQLSaver with aiomysql connection")
+    except Exception as e:
+        print(f"[Graph] Failed to connect to MySQL via aiomysql: {e}")
+        raise e
 
-    return graph.compile(checkpointer=_checkpointer, store=store_arg)
+    # Store 暂时使用内存
+    store_arg = True
+
+    return graph.compile(checkpointer=checkpointer, store=store_arg)
 
 if __name__ == '__main__':
     # Simple test to verify graph compilation

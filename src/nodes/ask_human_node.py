@@ -1,7 +1,7 @@
 from langgraph.types import Command, interrupt
 from src.graph_state import AgentState
 
-def ask_human(state: AgentState):
+async def ask_human(state: AgentState):
     from langchain_core.messages import AIMessage, HumanMessage
 
     # ⭐ 获取中断上下文

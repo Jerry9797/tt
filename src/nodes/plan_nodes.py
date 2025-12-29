@@ -27,7 +27,7 @@ from src.models.execution_result import (
 )
 
 
-def planning_node(state: AgentState):
+async def planning_node(state: AgentState):
     """生成执行计划 - 根据intent动态选择prompt"""
     from langchain_core.messages import AIMessage
     from src.config.sop_loader import get_sop_loader
@@ -55,13 +55,13 @@ def planning_node(state: AgentState):
         format_instructions=format_instructions
     )
     
-    # 调用LLM
+    # 调用LLM（异步）
     planner_prompt = PromptTemplate(
         template="{text}",
         input_variables=["text"]
     )
     chain = planner_prompt | q_max | JsonOutputParser()
-    result = chain.invoke({"text": final_prompt})
+    result = await chain.ainvoke({"text": final_prompt})
     
     steps = result.get('steps', [])
     
@@ -78,8 +78,8 @@ def planning_node(state: AgentState):
     }
 
 
-def plan_executor_node(state: AgentState):
-    """增强版计划执行节点 - 支持Human-in-the-Loop"""
+async def plan_executor_node(state: AgentState):
+    """增强版计划执行节点 - 支持Human-in-the-Loop（异步版本）"""
     plan = state.get("plan", [])
     current_step = state.get("current_step", 0)
     
@@ -152,21 +152,30 @@ def plan_executor_node(state: AgentState):
     # 准备Agent系统提示
     system_prompt = build_executor_prompt(state, current_step, step_description)
     
-    # 执行
-    # ⭐ 如果有用户输入，已经包含在chat_history中，不需要重复注入prompt
+    # ⭐ 获取 MCP 工具并合并
+    from src.mcp import get_mcp_manager
+    
+    mcp_manager = get_mcp_manager()
+    mcp_tools = mcp_manager.get_all_tools()
+    
+    # 合并静态工具和 MCP 工具
+    all_tools = ALL_TOOLS + mcp_tools
+    
+    if mcp_tools:
+        print(f"[MCP] 已加载 {len(mcp_tools)} 个 MCP 工具")
     
     # 创建Agent
     agent = create_agent(
         system_prompt=system_prompt,
         # model=mt_llm("gpt-4.1"),
         model=q_plus,
-        tools=ALL_TOOLS,
+        tools=all_tools,  # ⭐ 使用合并后的工具列表
     )
     
-    # 执行
+    # 执行（异步）
     start_exec = time.time()
-    # ⭐ 传入chat_history以便Agent了解上下文
-    execution_result = agent.invoke({
+    # ⭐ 使用 ainvoke 而不是 invoke，支持异步工具调用
+    execution_result = await agent.ainvoke({
         "input": step_description,
         # "chat_history": state.get("messages", [])
     })
@@ -419,7 +428,205 @@ def finalize_execution(state: AgentState) -> dict:
     }
 
 
-def replan_node(state: AgentState) -> dict:
+async def replan_node(state: AgentState) -> dict:
+    """
+    重新规划节点 - 评估执行结果并决定下一步行动
+    
+    职责：
+    1. 评估已执行步骤的结果
+    2. 判断是否已收集足够信息可以回答用户
+    3. 判断是否需要调整计划或重新规划
+    4. 决定：继续执行 / 重新规划 / 结束并响应
+    
+    ⭐ SOP模式：只有执行完所有SOP步骤后才允许replan
+    """
+    from langchain_core.messages import AIMessage, SystemMessage
+    from langchain_core.output_parsers import JsonOutputParser
+    from langchain_core.prompts import ChatPromptTemplate
+    
+    query = state.get("query", "")
+    plan = state.get("plan", [])
+    current_step = state.get("current_step", 0)
+    step_results = state.get("step_results", [])
+    is_sop_matched = state.get("is_sop_matched", False)
+    
+    # ⭐ 检查是否所有SOP步骤已执行完毕
+    # 通过比较step_results数量和原始plan长度判断
+    # 如果step_results中的步骤都来自原始plan，说明还在SOP阶段
+    sop_completed = False
+    if is_sop_matched and step_results:
+        # 检查是否有step_index >= len(plan)的结果（说明已经replan过）
+        max_step_index = max([r.step_index for r in step_results])
+        # 或者检查current_step是否已经到达或超过原始plan长度
+        if current_step >= len(plan):
+            sop_completed = True
+            print(f"[Replan] SOP已全部执行完毕 ({len(plan)}步），现在允许replan")
+    
+    # 如果还没有执行任何步骤，直接继续
+    if not step_results:
+        return {}
+    
+    # 构建已完成步骤的摘要
+    completed_steps_summary = []
+    for result in step_results:
+        status = "✅ 成功" if result.status == "success" else "❌ 失败"
+        summary = f"{status} 步骤{result.step_index + 1}: {result.step_description}"
+        if result.output_result:
+            summary += f"\n   结果: {result.output_result[:150]}"
+        if result.error_message:
+            summary += f"\n   错误: {result.error_message[:100]}"
+        completed_steps_summary.append(summary)
+    
+    # 剩余步骤
+    remaining_steps = plan[current_step:] if current_step < len(plan) else []
+    
+    # ⭐ 从prompt模块获取提示词模板（不含逻辑）
+    from src.prompt.prompt import (
+        get_replan_sop_in_progress_prompt_template,
+        get_replan_general_prompt_template
+    )
+    
+    # ⭐ 组装逻辑在这里（调用方负责）
+    if is_sop_matched and not sop_completed:
+        # SOP执行中：使用SOP模板
+        prompt_template = get_replan_sop_in_progress_prompt_template()
+        replan_prompt = prompt_template.format(
+            query=query,
+            plan_list="\n".join([f"{i+1}. {step}" for i, step in enumerate(plan)]),
+            completed_steps="\n".join(completed_steps_summary),
+            remaining_steps="\n".join([f"{i+current_step+1}. {step}" for i, step in enumerate(remaining_steps)]) if remaining_steps else "无",
+            remaining_count=len(remaining_steps)
+        )
+    else:
+        # 非SOP或SOP已完成：使用通用模板
+        prompt_template = get_replan_general_prompt_template()
+        sop_note = "（SOP已全部执行完毕，可以重新规划）" if is_sop_matched else ""
+        replan_prompt = prompt_template.format(
+            query=query,
+            sop_note=sop_note,
+            plan_list="\n".join([f"{i+1}. {step}" for i, step in enumerate(plan)]),
+            completed_steps="\n".join(completed_steps_summary),
+            remaining_steps="\n".join([f"{i+current_step+1}. {step}" for i, step in enumerate(remaining_steps)]) if remaining_steps else "无"
+        )
+
+    # 调用LLM进行决策（异步）
+    messages = [
+        SystemMessage(content="你是一个智能规划评估助手，擅长分析执行结果并做出合理决策。"),
+        {"role": "user", "content": replan_prompt}
+    ]
+    
+    try:
+        result = await q_max.ainvoke(messages)
+        
+        # 解析LLM响应
+        import json
+        import re
+        
+        decision_data = None
+        
+        # 策略1: 直接解析 result.content
+        try:
+            decision_data = json.loads(result.content)
+        except json.JSONDecodeError:
+            pass
+        
+        # 策略2: 使用正则提取 JSON 块
+        if not decision_data:
+            try:
+                json_match = re.search(r'\{.*\}', result.content, re.DOTALL)
+                if json_match:
+                    json_str = json_match.group()
+                    # 尝试修复常见的 JSON 格式问题
+                    # 1. 移除 JSON 中的注释
+                    json_str = re.sub(r'//.*?\n|/\*.*?\*/', '', json_str, flags=re.DOTALL)
+                    # 2. 移除尾随逗号
+                    json_str = re.sub(r',(\s*[}\]])', r'\1', json_str)
+                    decision_data = json.loads(json_str)
+            except (json.JSONDecodeError, AttributeError) as e:
+                print(f"[Replan] JSON 解析失败: {e}")
+        
+        # 策略3: 使用 LangChain 的 JsonOutputParser 强制解析
+        if not decision_data:
+            try:
+                parser = JsonOutputParser()
+                decision_data = parser.invoke(result)
+            except Exception as e:
+                print(f"[Replan] JsonOutputParser 失败: {e}")
+        
+        # 最后的兜底: 默认继续执行
+        if not decision_data:
+            print(f"[Replan] 无法解析响应，原始内容: {result.content[:200]}")
+            decision_data = {
+                "decision": "continue",
+                "reasoning": "无法解析LLM响应，默认继续执行"
+            }
+        
+        decision = decision_data.get("decision", "continue")
+        reasoning = decision_data.get("reasoning", "")
+        
+        print(f"\n[Replan] 决策: {decision}")
+        print(f"[Replan] 推理: {reasoning}")
+        
+        messages_to_add = []
+        
+        # 根据决策返回不同的结果
+        if decision == "respond":
+            # 已有足够信息，生成最终响应
+            response_text = decision_data.get("response", "")
+            
+            response_message = AIMessage(
+                content=f"💡 已收集足够信息，生成最终答案\n{response_text}"
+            )
+            messages_to_add.append(response_message)
+            
+            return {
+                "response": response_text,
+                "messages": messages_to_add,
+                # 标记为完成，停止继续执行
+                "current_step": len(plan)  # 设置为计划长度，触发完成
+            }
+        
+        elif decision == "replan":
+            # 需要重新规划
+            new_plan = decision_data.get("new_plan", [])
+            
+            replan_message = AIMessage(
+                content=f"🔄 需要调整计划\n原因: {reasoning}\n新计划:\n" +
+                        "\n".join([f"{i+1}. {step}" for i, step in enumerate(new_plan)])
+            )
+            messages_to_add.append(replan_message)
+            
+            return {
+                "plan": new_plan,
+                "current_step": 0,  # 重置到第一步
+                "messages": messages_to_add
+            }
+        
+        else:  # continue
+            # 继续执行剩余计划
+            continue_message = AIMessage(
+                content=f"▶️ 继续执行剩余计划\n原因: {reasoning}"
+            )
+            messages_to_add.append(continue_message)
+            
+            return {
+                "messages": messages_to_add
+            }
+    
+    except Exception as e:
+        print(f"[Replan] 错误: {e}")
+        import traceback
+        traceback.print_exc()
+        
+        # 出错时默认继续执行
+        error_message = AIMessage(
+            content=f"⚠️ 评估过程出错，继续执行原计划\n错误: {str(e)[:100]}"
+        )
+        
+        return {
+            "messages": [error_message]
+        }
+
     """
     重新规划节点 - 评估执行结果并决定下一步行动
     

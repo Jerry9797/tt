@@ -12,7 +12,7 @@ query_rewrite_prompt = ChatPromptTemplate.from_template(
     get_query_rewrite_prompt()
 )
 
-def query_rewrite_node(state: AgentState):
+async def query_rewrite_node(state: AgentState):
     print("query_rewrite_node 开始运行...")
     query = state['query']
     history = state.get('messages', [])
@@ -22,7 +22,7 @@ def query_rewrite_node(state: AgentState):
     print(f"DEBUG: [query_rewrite] Current History Msg Count: {len(history)}")
 
     chain = query_rewrite_prompt | q_plus | JsonOutputParser()
-    ret = chain.invoke({"query": query, "history": history_str})
+    ret = await chain.ainvoke({"query": query, "history": history_str})
 
     if ret.get("need_clarification"):
         print(f"需要澄清: {ret.get('clarifying_question')}")
@@ -38,3 +38,4 @@ def query_rewrite_node(state: AgentState):
         "faq_query": ret.get("rewritten_query", query),
         "keywords": ret.get("keywords", [])
     }
+

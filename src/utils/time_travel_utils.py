@@ -6,7 +6,7 @@ from datetime import datetime
 import json
 
 
-def get_all_thread_ids(graph) -> List[str]:
+async def get_all_thread_ids(graph) -> List[str]:
     """
     获取数据库中所有的 thread_id
     
@@ -19,24 +19,33 @@ def get_all_thread_ids(graph) -> List[str]:
     try:
         checkpointer = graph.checkpointer
         
-        # 检查是否是 MySQL checkpointer
+        # 检查是否是 AsyncMySQLSaver (AIOMySQLSaver)
         if not hasattr(checkpointer, 'conn'):
             return []
         
         # 直接查询数据库获取所有不同的 thread_id
-        with checkpointer.conn.cursor() as cursor:
-            cursor.execute("""
-                SELECT DISTINCT thread_id 
-                FROM checkpoints
-            """)
-            rows = cursor.fetchall()
-            return [row['thread_id'] for row in rows]
+        # 使用 aiomysql 游标
+        async with checkpointer.conn.cursor() as cursor:
+            # 检查表是否存在
+            # 注意: LangGraph MySQL Saver 的表名通常是 checkpoints
+            try:
+                await cursor.execute("""
+                    SELECT DISTINCT thread_id 
+                    FROM checkpoints
+                """)
+                rows = await cursor.fetchall()
+                # 默认 cursor 返回的是元组，不是字典
+                return [row[0] for row in rows]
+            except Exception as e:
+                # 表可能不存在
+                print(f"查询 thread_id 失败 (可能是表不存在): {e}")
+                return []
     except Exception as e:
         print(f"获取 thread_id 列表失败: {e}")
         return []
 
 
-def get_state_history(graph, thread_id: str) -> List[Dict[str, Any]]:
+async def get_state_history(graph, thread_id: str) -> List[Dict[str, Any]]:
     """
     获取指定 thread 的所有历史状态
     
@@ -51,7 +60,9 @@ def get_state_history(graph, thread_id: str) -> List[Dict[str, Any]]:
     
     try:
         history = []
-        for state in graph.get_state_history(config):
+        # ⭐ aget_state_history 返回异步迭代器，需要使用 async for
+        state_iter = graph.aget_state_history(config)
+        async for state in state_iter:
             history.append({
                 "checkpoint_id": state.config["configurable"].get("checkpoint_id"),
                 "values": state.values,
@@ -64,6 +75,8 @@ def get_state_history(graph, thread_id: str) -> List[Dict[str, Any]]:
         return history
     except Exception as e:
         print(f"获取历史状态失败: {e}")
+        import traceback
+        traceback.print_exc()
         return []
 
 
@@ -122,7 +135,7 @@ def get_checkpoint_details(checkpoint: Dict[str, Any]) -> str:
     return json.dumps(details, indent=2, ensure_ascii=False)
 
 
-def rollback_to_checkpoint(graph, thread_id: str, checkpoint_id: str, inputs: Optional[Dict] = None):
+async def rollback_to_checkpoint(graph, thread_id: str, checkpoint_id: str, inputs: Optional[Dict] = None):
     """
     回滚到指定的 checkpoint 并继续执行
     
@@ -143,11 +156,12 @@ def rollback_to_checkpoint(graph, thread_id: str, checkpoint_id: str, inputs: Op
     }
     
     # 从指定 checkpoint 继续执行
-    result = graph.invoke(inputs, config=config)
+    # ⭐ 使用 ainvoke
+    result = await graph.ainvoke(inputs, config=config)
     return result
 
 
-def update_and_continue(
+async def update_and_continue(
     graph, 
     thread_id: str, 
     checkpoint_id: str, 
@@ -175,8 +189,10 @@ def update_and_continue(
     }
     
     # 更新状态
-    graph.update_state(config=config, values=updates, as_node=as_node)
+    # ⭐ 使用 aupdate_state
+    await graph.aupdate_state(config=config, values=updates, as_node=as_node)
     
     # 继续执行
-    result = graph.invoke(None, config={"configurable": {"thread_id": thread_id}})
+    # ⭐ 使用 ainvoke
+    result = await graph.ainvoke(None, config={"configurable": {"thread_id": thread_id}})
     return result

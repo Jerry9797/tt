@@ -1,0 +1,10 @@
+{
+    "mcp_servers": [
+        {
+            "name": "demo_server",
+            "url": "http://127.0.0.1:9900/mcp",
+            "enabled": true,
+            "description": "演示 MCP 服务器，提供 add 工具"
+        }
+    ]
+}
