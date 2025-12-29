@@ -16,12 +16,12 @@ from src.utils.time_travel_utils import (
     format_checkpoint_info,
     get_checkpoint_details,
     rollback_to_checkpoint,
-    update_and_continue
+    update_and_continue, get_all_thread_ids
 )
 
-st.set_page_config(page_title="TT Assistant Debugger", layout="wide")
+st.set_page_config(page_title="ces", layout="wide")
 
-st.title("🤖 TT Assistant Debugger")
+st.title("🤖 ces")
 
 # 初始化 Session State
 if "messages" not in st.session_state:
@@ -33,14 +33,29 @@ if "thread_id" not in st.session_state:
 if "waiting_for_clarification" not in st.session_state:
     st.session_state.waiting_for_clarification = False
 
-if "graph" not in st.session_state:
-    st.session_state.graph = build_graph()
+# 注意：我们不再在启动时全局初始化 graph
+# 因为 build_graph 现在强制使用异步 MySQL Saver，需要事件循环
+# if "graph" not in st.session_state:
+#     st.session_state.graph = build_graph()
 
 if "selected_checkpoint_idx" not in st.session_state:
     st.session_state.selected_checkpoint_idx = None
 
+# 初始化 selected_thread_id
+if "selected_thread_id" not in st.session_state:
+    st.session_state.selected_thread_id = "default_thread"
+
 # Sidebar 显示当前状态
 with st.sidebar:
+    st.header("⚙️ Configuration")
+    
+    # Thread ID 管理
+    thread_id = st.text_input("Thread ID", value=st.session_state.selected_thread_id)
+    if thread_id != st.session_state.selected_thread_id:
+        st.session_state.selected_thread_id = thread_id
+        st.session_state.messages = [] # 切换 thread 时清空显示的消息
+        st.rerun()
+
     st.header("Debug Info")
     st.text(f"Thread ID: {st.session_state.thread_id}")
     st.checkbox("Waiting for Clarification", value=st.session_state.waiting_for_clarification, disabled=True)
@@ -59,11 +74,34 @@ with st.sidebar:
     # 历史会话选择器
     st.subheader("📂 Session History")
     
-    from src.utils.time_travel_utils import get_all_thread_ids
-    all_thread_ids = get_all_thread_ids(st.session_state.graph)
+    # 获取所有 thread_id (需要异步获取)
+    # ⭐ 动态构建 Graph
+    # import asyncio # 已经导入
+    # from src.nodes.build_graph import build_graph # 已经导入
     
+    async def fetch_thread_ids():
+        graph = None
+        try:
+            # 仅获取历史记录不需要 MCP 工具，跳过初始化以提高速度并避免 async 上下文错误
+            graph = await build_graph(init_mcp=False)
+            # 获取所有 thread_ids (注意: get_all_thread_ids 也需要适配异步或能够处理异步 checkpointer)
+            # 这里的 get_all_thread_ids 在 time_travel_utils.py 中，稍后需要检查是否支持异步 checkpointer
+            return await get_all_thread_ids(graph)
+        finally:
+            # 显式关闭数据库连接，防止 Event loop is closed 错误
+            if graph and hasattr(graph.checkpointer, 'conn'):
+                graph.checkpointer.conn.close()
+            
+    try:
+        all_thread_ids = asyncio.run(fetch_thread_ids())
+    except Exception as e:
+        print(f"Async fetch failed: {e}")
+        all_thread_ids = []
+
     if not all_thread_ids:
         st.info("No historical sessions found.")
+        # 如果没有历史会话，将当前会话ID作为唯一选项
+        all_thread_ids = [st.session_state.thread_id]
         selected_thread_id = st.session_state.thread_id
     else:
         # 确保当前 thread_id 在列表中
@@ -94,10 +132,30 @@ with st.sidebar:
                 st.rerun()
     
     st.divider()
+    st.divider()
     st.subheader("🕐 Checkpoints")
     
     # 获取选中 thread 的历史状态（使用 selected_thread_id 而不是当前 thread_id）
-    history = get_state_history(st.session_state.graph, selected_thread_id)
+    # ⭐ 需要在异步上下文中重建 graph 以连接 MySQL
+    import asyncio
+    from src.nodes.build_graph import build_graph
+    
+    async def fetch_history_from_mysql():
+        graph = None
+        try:
+            # 在这里重建 graph，因为它会检测到运行的 loop 并使用 MySQL
+            # 获取 Checkpoints 也不需要 MCP
+            graph = await build_graph(init_mcp=False)
+            return await get_state_history(graph, selected_thread_id)
+        finally:
+            if graph and hasattr(graph.checkpointer, 'conn'):
+                graph.checkpointer.conn.close()
+        
+    try:
+        history = asyncio.run(fetch_history_from_mysql())
+    except Exception as e:
+        print(f"获取历史失败: {e}")
+        history = []
     
     if not history:
         st.info("No checkpoints available yet. Start a conversation to create checkpoints.")
@@ -175,13 +233,26 @@ with st.sidebar:
                             checkpoint_id = selected_checkpoint["checkpoint_id"]
                             
                             with st.spinner("Updating state and continuing..."):
-                                result = update_and_continue(
-                                    st.session_state.graph,
-                                    st.session_state.thread_id,
-                                    checkpoint_id,
-                                    updates,
-                                    as_node=as_node
-                                )
+                                # 定义异步执行函数
+                                async def run_update():
+                                    graph = None
+                                    try:
+                                        # 但对于 Streamlit 这种无长驻 loop 的环境，这是确保连接有效的最简单方法
+                                        from src.nodes.build_graph import build_graph
+                                        graph = await build_graph()
+                                        
+                                        return await update_and_continue(
+                                            graph,
+                                            st.session_state.thread_id,
+                                            checkpoint_id,
+                                            updates,
+                                            as_node=as_node
+                                        )
+                                    finally:
+                                        if graph and hasattr(graph.checkpointer, 'conn'):
+                                            graph.checkpointer.conn.close()
+
+                                result = asyncio.run(run_update())
                             
                             st.success("State updated and execution continued!")
                             st.session_state.show_edit_form = False
@@ -228,6 +299,10 @@ if prompt := st.chat_input("Input your query..."):
             
             # 直接调用 API 内部的 chat 函数 (async)
             # 使用 asyncio.run 在同步环境中运行异步函数
+            # 注意：chat 函数内部会构建 graph，我们需要确保它能正确关闭资源
+            # 由于 chat 函数本身没提供关闭机制，我们可能需要修改 chat 函数，或者在这里无法介入
+            # 暂时假设 chat 函数会修改为自动关闭，或者我们接受这里的隐患（因为 chat 是主要逻辑）
+            # 更好的办法是：修改 fastapi/app.py 中的 chat 函数
             result = asyncio.run(chat(chat_request))
             
             # 3. 处理响应

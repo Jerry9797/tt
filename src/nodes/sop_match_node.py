@@ -10,7 +10,7 @@ from src.config.sop_loader import get_sop_loader
 sop_loader = get_sop_loader()
 intent_dict = sop_loader.get_intent_dict()
 
-def sop_match_node(state: AgentState):
+async def sop_match_node(state: AgentState):
     """意图识别，是否命中SOP"""
     faq_query = state['faq_query']
     intent_string = json.dumps(intent_dict, ensure_ascii=False)
@@ -24,7 +24,7 @@ def sop_match_node(state: AgentState):
         HumanMessage(content=faq_query),
     ]
 
-    response = q_intent.invoke(messages)
+    response = await q_intent.ainvoke(messages)
     intent = response.content
     
     print(f"[SOP Match] Query: {faq_query[:50]}")
@@ -51,3 +51,4 @@ def sop_match_node(state: AgentState):
         "is_sop_matched": False,
         "intent": "other"
     }
+

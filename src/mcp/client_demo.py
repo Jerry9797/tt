@@ -5,14 +5,19 @@ from mcp import ClientSession, StdioServerParameters
 
 
 from mcp.client.sse import sse_client
+from mcp.client.streamable_http import streamable_http_client
 async def run_client():
     # ---------------------------------------------------------
     # 场景 1: 连接 API Server
     # 路径分析: http://localhost:8000 + /fastapi (Mount路径) + /sse (FastMCP默认SSE路径)
     # ---------------------------------------------------------
     print("--- 正在连接 API Server ---")
-    async with sse_client(url="http://localhost:8000/api/sse") as (read, write):
-        async with ClientSession(read, write) as session:
+    async with streamable_http_client(url="http://127.0.0.1:9900/mcp") as (
+        read_stream,
+        write_stream,
+        _,
+    ):
+        async with ClientSession(read_stream, write_stream) as session:
             # 1. 初始化并获取工具列表
             await session.initialize()
             tools = await session.list_tools()
@@ -29,8 +34,12 @@ async def run_client():
     # 路径分析: http://localhost:8000 + /chat (Mount路径) + /sse
     # ---------------------------------------------------------
     print("--- 正在连接 Chat Server ---")
-    async with sse_client(url="http://localhost:8000/chat/sse") as (read, write):
-        async with ClientSession(read, write) as session:
+    async with streamable_http_client(url="http://127.0.0.1:9900/mcp") as (
+        read_stream,
+        write_stream,
+        _,
+    ):
+        async with ClientSession(read_stream, write_stream) as session:
             await session.initialize()
             tools = await session.list_tools()
             print(f"发现工具: {[t.name for t in tools.tools]}")

@@ -42,3 +42,10 @@ def get_connection_params():
         "cursorclass": DictCursor,
         "autocommit": True
     }
+
+async def get_connection_string():
+    """
+    Get MySQL connection string for async drivers (asyncmy).
+    Format: mysql://user:password@host:port/database
+    """
+    return f"mysql://{MYSQL_USER}:{MYSQL_PASSWORD}@{MYSQL_HOST}:{MYSQL_PORT}/{MYSQL_DATABASE}"

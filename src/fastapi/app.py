@@ -57,18 +57,19 @@ from langgraph.errors import GraphInterrupt
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
+    graph = None
     try:
-        graph = build_graph()
+        graph = await build_graph()
         config = {"configurable": {"thread_id": request.thread_id or "default_thread"}}
         result = {} # Initialize result
 
-        # 1. 处理恢复逻辑
+        # 1. 检查是否是 "Resume" (Clarification Response)
         if request.resume_input:
             print(f"中断恢复: {request.resume_input}")
             # 使用 Command 恢复中断
-            # 注意: invoke 可能会因为再次中断而抛出 GraphInterrupt 或直接返回
+            # 注意: ainvoke 可能会因为再次中断而抛出 GraphInterrupt 或直接返回
             try:
-                result = graph.invoke(Command(resume=request.resume_input), config=config)
+                result = await graph.ainvoke(Command(resume=request.resume_input), config=config)
             except GraphInterrupt:
                 print("Graph execution interrupted (resume).")
             
@@ -90,14 +91,15 @@ async def chat(request: ChatRequest):
                     messages.append(AIMessage(content=msg.get('content')))
             initial_state['messages'] = messages
 
-            # 执行 Graph
+            # 执行 Graph（异步）
             try:
-                result = graph.invoke(initial_state, config=config)
+                result = await graph.ainvoke(initial_state, config=config)
             except GraphInterrupt:
                 print("Graph execution interrupted (new request).")
 
         # 3. 检查是否中断 (Generic Interrupt)
-        state_snapshot = graph.get_state(config)
+        # ⭐ 使用 aget_state (异步)
+        state_snapshot = await graph.aget_state(config)
         tasks = list(state_snapshot.tasks)
         if tasks and tasks[0].interrupts:
             # 获取中断信息
@@ -113,7 +115,11 @@ async def chat(request: ChatRequest):
         # 4. 正常结束 (只有在没有中断时才返回结果)
         # 如果 result 为空且没有中断，说明出现了异常情况
         if result is None:
+            # 如果是 ainvoke 返回 None，可能是状态未改变或其他原因
             result = {}
+            if state_snapshot and state_snapshot.values:
+                # 尝试从最新状态中获取结果，如果 ainvoke 没有返回完整状态
+                result = state_snapshot.values
         
         # 转换步骤结果
         step_results_response = None
@@ -168,10 +174,19 @@ async def chat(request: ChatRequest):
             step_results=step_results_response,
             execution_summary=execution_summary_response
         )
+    except HTTPException:
+        raise
     except Exception as e:
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        # 显式关闭数据库连接，防止 loop closed error
+        if graph and hasattr(graph.checkpointer, 'conn'):
+            try:
+                graph.checkpointer.conn.close()
+            except Exception as e:
+                print(f"Error closing DB connection: {e}")
 
 @app.get("/health")
 async def health_check():
@@ -184,7 +199,8 @@ async def get_execution_history(thread_id: str):
     try:
         graph = build_graph()
         config = {"configurable": {"thread_id": thread_id}}
-        state_snapshot = graph.get_state(config)
+        # ⭐ 使用 aget_state (异步)
+        state_snapshot = await graph.aget_state(config)
         
         if not state_snapshot or not state_snapshot.values:
             raise HTTPException(status_code=404, detail="会话不存在")

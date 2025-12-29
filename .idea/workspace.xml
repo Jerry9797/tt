@@ -5,27 +5,25 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="8695e368-970a-4ca6-87bd-0db42f859791" name="Changes" comment="feature:add code">
-      <change afterPath="$PROJECT_DIR$/src/config/mysql.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/nodes/ask_human_node.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/tools/user_log_tool.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/task.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/config/mcp_servers.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/mcp/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/mcp/mcp_config.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/mcp/mcp_manager.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.env" beforeDir="false" afterPath="$PROJECT_DIR$/.env" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/api/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/fastapi/__init__.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/api/app.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/fastapi/app.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/config/sop_config.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/src/config/sop_config.yaml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/graph_state.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/graph_state.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/config/mysql.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/config/mysql.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/fastapi/app.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/fastapi/app.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/mcp/client_demo.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/mcp/client_demo.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/mcp/demo.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/mcp/server_demo.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/nodes/ask_human_node.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/nodes/ask_human_node.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/nodes/build_graph.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/nodes/build_graph.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/nodes/intent_nodes.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/nodes/sop_match_node.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/nodes/faq_retrieve_node.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/nodes/faq_retrieve_node.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/nodes/plan_nodes.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/nodes/plan_nodes.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/nodes/query_nodes.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/nodes/query_rewrite_node.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/nodes/rag_nodes.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/nodes/faq_retrieve_node.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/nodes/query_rewrite_node.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/nodes/query_rewrite_node.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/nodes/sop_match_node.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/nodes/sop_match_node.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/prompt/prompt.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/prompt/prompt.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/tools/README.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/tools/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/tools/__init__.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/tools/trace_tools.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/tools/trace_tools.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/ui/app.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ui/app.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/utils/time_travel_utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/utils/time_travel_utils.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -57,10 +55,13 @@
   </component>
   <component name="PropertiesComponent"><![CDATA[{
   "keyToString": {
+    "Python.client_demo.executor": "Debug",
+    "Python.server_demo.executor": "Run",
     "Python.streamlit.executor": "Run",
     "Python.test_real_ai_shop_no_call.executor": "Debug",
     "git-widget-placeholder": "main",
-    "mcopilot_agent_context_state_catpaw_code_repo_config": "{\"rules\":[],\"mcpServers\":\"\",\"lastUpdated\":\"2025-12-25T06:16:56.690576Z\"}",
+    "mcopilot_agent_context_state_agent_view_container_tabs": "[{\"id\":\"57539ced-1832-4ec6-b0c8-afb1ee125916\",\"displayName\":\"New Chat\",\"createdAt\":1766669303319,\"closeable\":true,\"tabType\":\"AGENT\",\"isActive\":true}]",
+    "mcopilot_agent_context_state_catpaw_code_repo_config": "{\"rules\":[],\"mcpServers\":\"\",\"lastUpdated\":\"2025-12-29T06:46:31.262522Z\"}",
     "node.js.detected.package.eslint": "true",
     "node.js.selected.package.eslint": "(autodetect)",
     "node.js.selected.package.tslint": "(autodetect)"
@@ -71,7 +72,58 @@
     ]
   }
 }]]></component>
+  <component name="RecentsManager">
+    <key name="MoveFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/src/config" />
+    </key>
+  </component>
   <component name="RunManager" selected="Python.streamlit">
+    <configuration name="client_demo" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="tt" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/src/mcp" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/src/mcp/client_demo.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="server_demo" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="tt" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/src/mcp" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/src/mcp/server_demo.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
     <configuration name="streamlit" type="PythonConfigurationType" factoryName="Python">
       <module name="tt" />
       <option name="ENV_FILES" value="" />
@@ -81,7 +133,6 @@
         <env name="PYTHONUNBUFFERED" value="1" />
       </envs>
       <option name="SDK_HOME" value="" />
-      <option name="SDK_NAME" value="Python 3.13 virtualenv at ~/Documents/py_project/tt/.venv" />
       <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
       <option name="IS_MODULE_SDK" value="false" />
       <option name="ADD_CONTENT_ROOTS" value="true" />
@@ -121,10 +172,14 @@
     </configuration>
     <list>
       <item itemvalue="Python.streamlit" />
+      <item itemvalue="Python.client_demo" />
+      <item itemvalue="Python.server_demo" />
       <item itemvalue="Python.test_real_ai_shop_no_call" />
     </list>
     <recent_temporary>
       <list>
+        <item itemvalue="Python.server_demo" />
+        <item itemvalue="Python.client_demo" />
         <item itemvalue="Python.test_real_ai_shop_no_call" />
       </list>
     </recent_temporary>
@@ -149,7 +204,31 @@
       <option name="project" value="LOCAL" />
       <updated>1766576277260</updated>
     </task>
-    <option name="localTasksCounter" value="3" />
+    <task id="LOCAL-00003" summary="add">
+      <option name="closed" value="true" />
+      <created>1766661520467</created>
+      <option name="number" value="00003" />
+      <option name="presentableId" value="LOCAL-00003" />
+      <option name="project" value="LOCAL" />
+      <updated>1766661520467</updated>
+    </task>
+    <task id="LOCAL-00004" summary="add">
+      <option name="closed" value="true" />
+      <created>1766661535153</created>
+      <option name="number" value="00004" />
+      <option name="presentableId" value="LOCAL-00004" />
+      <option name="project" value="LOCAL" />
+      <updated>1766661535153</updated>
+    </task>
+    <task id="LOCAL-00005" summary="add">
+      <option name="closed" value="true" />
+      <created>1766745378579</created>
+      <option name="number" value="00005" />
+      <option name="presentableId" value="LOCAL-00005" />
+      <option name="project" value="LOCAL" />
+      <updated>1766745378580</updated>
+    </task>
+    <option name="localTasksCounter" value="6" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
@@ -162,19 +241,21 @@
       <breakpoints>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/src/nodes/plan_nodes.py</url>
-          <line>65</line>
-          <option name="timeStamp" value="58" />
+          <line>388</line>
+          <option name="timeStamp" value="41" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
-    <SUITE FILE_PATH="coverage/tt$query_rewrite__1_.coverage" NAME="node Coverage Results" MODIFIED="1765121624996" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/src" />
     <SUITE FILE_PATH="coverage/tt$node.coverage" NAME="node Coverage Results" MODIFIED="1766216906691" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/src" />
+    <SUITE FILE_PATH="coverage/tt$query_rewrite__1_.coverage" NAME="node Coverage Results" MODIFIED="1765121624996" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/src" />
     <SUITE FILE_PATH="coverage/tt$test_real_ai_shop_no_call.coverage" NAME="test_real_ai_shop_no_call Coverage Results" MODIFIED="1766559731762" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/tests" />
-    <SUITE FILE_PATH="coverage/tt$qdrant.coverage" NAME="创建qdrant Coverage Results" MODIFIED="1764963063836" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/脚本" />
-    <SUITE FILE_PATH="coverage/tt$streamlit.coverage" NAME="streamlit Coverage Results" MODIFIED="1766936797118" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/tt$server_demo.coverage" NAME="server_demo Coverage Results" MODIFIED="1766990866452" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/src/mcp" />
+    <SUITE FILE_PATH="coverage/tt$streamlit.coverage" NAME="streamlit Coverage Results" MODIFIED="1766995418014" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/tt$client_demo.coverage" NAME="client_demo Coverage Results" MODIFIED="1766979272573" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/src/mcp" />
     <SUITE FILE_PATH="coverage/tt$query_rewrite.coverage" NAME="query_rewrite Coverage Results" MODIFIED="1764968490462" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/src/node" />
     <SUITE FILE_PATH="coverage/tt$test_messages_flow.coverage" NAME="test_messages_flow Coverage Results" MODIFIED="1766392967475" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/examples" />
+    <SUITE FILE_PATH="coverage/tt$qdrant.coverage" NAME="创建qdrant Coverage Results" MODIFIED="1764963063836" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/脚本" />
   </component>
 </project>

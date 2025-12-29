@@ -136,7 +136,7 @@ def get_replan_general_prompt_template():
     """
     return """你是一个智能规划评估助手。你的任务是评估当前执行情况，并决定下一步行动。{sop_note}
 
-用户问题：{query}
+任务：{query}
 
 当前计划：
 {plan_list}
@@ -153,6 +153,7 @@ def get_replan_general_prompt_template():
 3. 如果信息不足：
    - 剩余步骤是否合理？如果合理，继续执行
    - 剩余步骤不合理或需要调整？生成新的计划
+4. 请严格围绕任务展开工作，不要做超过任务之外的步骤。
 
 输出格式：
 {{
