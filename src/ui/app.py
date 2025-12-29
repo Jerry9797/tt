@@ -299,11 +299,17 @@ if prompt := st.chat_input("Input your query..."):
             
             # 直接调用 API 内部的 chat 函数 (async)
             # 使用 asyncio.run 在同步环境中运行异步函数
-            # 注意：chat 函数内部会构建 graph，我们需要确保它能正确关闭资源
-            # 由于 chat 函数本身没提供关闭机制，我们可能需要修改 chat 函数，或者在这里无法介入
-            # 暂时假设 chat 函数会修改为自动关闭，或者我们接受这里的隐患（因为 chat 是主要逻辑）
-            # 更好的办法是：修改 fastapi/app.py 中的 chat 函数
-            result = asyncio.run(chat(chat_request))
+            
+            async def run_chat_with_cleanup():
+                try:
+                    return await chat(chat_request)
+                finally:
+                    # 确保 MCP 资源释放，防止 loop closed error
+                    # chat 内部可能初始化了 MCP (如果 build_graph init_mcp=True)
+                    from src.mcp.mcp_manager import cleanup_mcp_manager
+                    await cleanup_mcp_manager()
+            
+            result = asyncio.run(run_chat_with_cleanup())
             
             # 3. 处理响应
             if result.status == "need_clarification":

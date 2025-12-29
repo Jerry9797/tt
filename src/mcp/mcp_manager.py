@@ -238,6 +238,7 @@ async def cleanup_mcp_manager():
     if _manager is not None:
         await _manager.disconnect_all()
         print("[MCP Manager] 已清理所有连接")
+        _manager = None # Ensure the global manager is reset after cleanup
 
 
 # 测试代码
