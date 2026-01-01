@@ -14,7 +14,8 @@ def overwrite(left, right):
     return right
 
 class AgentState(TypedDict):
-    query: str
+    original_query: str
+    rewritten_query: str
     # 消息
     messages: Annotated[List[AnyMessage], add_messages]
     # 对query进行提取，查询FAQ

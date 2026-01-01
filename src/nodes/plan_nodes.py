@@ -1,9 +1,10 @@
+from langchain_core.messages import SystemMessage
 from langgraph.types import Command, interrupt
 
 from langchain.agents import create_agent
 
 from langchain_core.output_parsers import JsonOutputParser
-from langchain_core.prompts import PromptTemplate
+from langchain_core.prompts import PromptTemplate, ChatPromptTemplate
 from datetime import datetime
 import time
 
@@ -55,7 +56,11 @@ async def planning_node(state: AgentState):
         query=faq_query,
         format_instructions=format_instructions
     )
-    
+    from src.prompt.prompt_loader import get_prompt
+    ChatPromptTemplate.from_messages([
+        SystemMessage(content=get_prompt("system_prompt")),
+
+    ])
     # 调用LLM（异步）
     planner_prompt = PromptTemplate(
         template="{text}",
@@ -504,16 +509,13 @@ async def replan_node(state: AgentState) -> dict:
     # 剩余步骤
     remaining_steps = plan[current_step:] if current_step < len(plan) else []
     
-    # ⭐ 从prompt模块获取提示词模板（不含逻辑）
-    from src.prompt.prompt import (
-        get_replan_sop_in_progress_prompt_template,
-        get_replan_general_prompt_template
-    )
+    # ⭐ 从prompt_loader获取提示词模板
+    from src.prompt.prompt_loader import get_prompt
     
     # ⭐ 组装逻辑在这里（调用方负责）
     if is_sop_matched and not sop_completed:
         # SOP执行中：使用SOP模板
-        prompt_template = get_replan_sop_in_progress_prompt_template()
+        prompt_template = get_prompt("replan_sop_in_progress")
         replan_prompt = prompt_template.format(
             query=query,
             plan_list="\n".join([f"{i+1}. {step}" for i, step in enumerate(plan)]),
@@ -523,7 +525,7 @@ async def replan_node(state: AgentState) -> dict:
         )
     else:
         # 非SOP或SOP已完成：使用通用模板
-        prompt_template = get_replan_general_prompt_template()
+        prompt_template = get_prompt("replan_general")
         sop_note = "（SOP已全部执行完毕，可以重新规划）" if is_sop_matched else ""
         replan_prompt = prompt_template.format(
             query=query,
@@ -702,16 +704,13 @@ async def replan_node(state: AgentState) -> dict:
     # 剩余步骤
     remaining_steps = plan[current_step:] if current_step < len(plan) else []
     
-    # ⭐ 从prompt模块获取提示词模板（不含逻辑）
-    from src.prompt.prompt import (
-        get_replan_sop_in_progress_prompt_template,
-        get_replan_general_prompt_template
-    )
+    # ⭐ 从prompt_loader获取提示词模板
+    from src.prompt.prompt_loader import get_prompt
     
     # ⭐ 组装逻辑在这里（调用方负责）
     if is_sop_matched and not sop_completed:
         # SOP执行中：使用SOP模板
-        prompt_template = get_replan_sop_in_progress_prompt_template()
+        prompt_template = get_prompt("replan_sop_in_progress")
         replan_prompt = prompt_template.format(
             query=query,
             plan_list="\n".join([f"{i+1}. {step}" for i, step in enumerate(plan)]),
@@ -721,7 +720,7 @@ async def replan_node(state: AgentState) -> dict:
         )
     else:
         # 非SOP或SOP已完成：使用通用模板
-        prompt_template = get_replan_general_prompt_template()
+        prompt_template = get_prompt("replan_general")
         sop_note = "（SOP已全部执行完毕，可以重新规划）" if is_sop_matched else ""
         replan_prompt = prompt_template.format(
             query=query,
