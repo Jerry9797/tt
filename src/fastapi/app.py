@@ -78,7 +78,7 @@ async def chat(request: ChatRequest):
             print("TT running...")
             # 2. 处理新请求
             initial_state = AgentState()
-            initial_state['query'] = request.query
+            initial_state['original_query'] = request.query
             initial_state['plan'] = []
             initial_state['current_step'] = 0
             initial_state['past_steps'] = []
@@ -135,13 +135,7 @@ async def chat(request: ChatRequest):
                     duration_ms=r.duration_ms,
                     output=r.output_result,
                     error=r.error_message,
-                    tool_calls=[{
-                        "tool_name": tc.tool_name,
-                        "arguments": tc.arguments,
-                        "result": str(tc.result) if tc.result else None,
-                        "error": tc.error,
-                        "duration_ms": tc.duration_ms
-                    } for tc in r.tool_calls],
+                    tool_calls=[],  # StepExecutionResult 没有 tool_calls 字段
                     token_usage=r.token_usage.dict() if r.token_usage else None
                 )
                 for r in result["step_results"]
@@ -167,7 +161,7 @@ async def chat(request: ChatRequest):
             }
 
         return ChatResponse(
-            query=result.get("faq_query", request.query), 
+            query=result.get("original_query", request.query),
             intent=result.get("intent"),
             faq_response=result.get("faq_response"),
             plan=result.get("plan"),
@@ -226,13 +220,7 @@ async def get_execution_history(thread_id: str):
                     "duration_ms": r.duration_ms,
                     "output": r.output_result,
                     "error": r.error_message,
-                    "tool_calls": [{
-                        "tool_name": tc.tool_name,
-                        "arguments": tc.arguments,
-                        "result": str(tc.result) if tc.result else None,
-                        "error": tc.error,
-                        "duration_ms": tc.duration_ms
-                    } for tc in r.tool_calls],
+                    "tool_calls": [],  # StepExecutionResult 没有 tool_calls 字段
                     "token_usage": r.token_usage.dict() if r.token_usage else None
                 }
                 for r in step_results

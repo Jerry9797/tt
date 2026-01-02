@@ -19,7 +19,6 @@ class AgentState(TypedDict):
     # 消息
     messages: Annotated[List[AnyMessage], add_messages]
     # 对query进行提取，查询FAQ
-    faq_query: str
     faq_response: list[str]
 
     # 意图

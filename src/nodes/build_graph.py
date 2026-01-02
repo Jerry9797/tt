@@ -9,6 +9,7 @@ from src.nodes.ask_human_node import ask_human
 from src.nodes.faq_retrieve_node import faq_retrieve_node
 from src.nodes.sop_match_node import sop_match_node
 from src.nodes.plan_nodes import planning_node, plan_executor_node, replan_node
+from src.nodes.response_generator_node import response_generator_node
 
 # Global persistence instances
 _checkpointer = None
@@ -16,15 +17,16 @@ _store = None
 
 async def build_graph(init_mcp: bool = True):
     # ⭐ 初始化 MCP 工具管理器（异步）
-    if init_mcp:
-        import asyncio
-        from src.mcp import init_mcp_manager
-        
-        try:
-            await init_mcp_manager()
-            # print("[Graph] MCP 管理器初始化完成")
-        except (Exception, BaseException) as e:
-            print(f"[Graph] MCP 初始化失败: {e}，继续使用非 MCP 工具")
+    # 暂时注释掉 MCP 初始化
+    # if init_mcp:
+    #     import asyncio
+    #     from src.mcp import init_mcp_manager
+    #     
+    #     try:
+    #         await init_mcp_manager()
+    #         # print("[Graph] MCP 管理器初始化完成")
+    #     except (Exception, BaseException) as e:
+    #         print(f"[Graph] MCP 初始化失败: {e}，继续使用非 MCP 工具")
     
     graph = StateGraph(AgentState)
     graph.add_node("query_rewrite_node", query_rewrite_node)
@@ -35,6 +37,7 @@ async def build_graph(init_mcp: bool = True):
     graph.add_node("planning_node", planning_node)
     graph.add_node("plan_executor_node", plan_executor_node)
     graph.add_node("replan_node", replan_node)
+    graph.add_node("response_generator", response_generator_node)
 
     # edge
     graph.set_entry_point("query_rewrite_node")
@@ -71,6 +74,9 @@ async def build_graph(init_mcp: bool = True):
                                     "plan_executor_node": "plan_executor_node",
                                     "end": END,
                                 })
+    
+    # response_generator 生成完答案后直接结束
+    graph.add_edge("response_generator", END)
 
     # Initialize persistence
     import aiomysql

@@ -26,10 +26,8 @@ shop_them_no_call:
     - get_visit_record_by_userid
     - get_trace_context
   
-  # Planning Prompt（用于replan时）
+  # Planning Prompt
   planning_prompt: |
-    # 角色定义
-    你是【商户召回问题诊断专家】，擅长排查商户为何未在推荐列表中召回。
     
     # 用户问题
     {query}
@@ -153,7 +151,7 @@ display_field_missing:
 # 下挂问题
 # ============================================================================
 
-play_game:
+hangup_question:
   name: "下挂问题"
   description: "下挂问题"
   category: "下挂问题"
@@ -173,31 +171,18 @@ play_game:
     
     {format_instructions}
   
-  metrics:
-    success_rate: 1.0
-    avg_steps: 3
 
-
-alarm_set:
-  name: "设置闹钟"
-  description: "示例SOP - 设置闹钟场景"
-  category: "示例"
-  owner: "测试"
+restore_user_scene:
+  name: "还原用户现场"
+  description: "根据用户ID和访问时间，输出该用户在该时间范围内的访问记录"
+  category: "用户访问记录"
 
   steps:
-    - "确认闹钟时间"
-    - "确认闹钟重复规则（每天/工作日/周末/单次）"
-    - "设置闹钟并确认"
+    - "1"
+    - "2"
+    - "3"
 
   tools: []
 
   planning_prompt: |
-    你是闹钟助手，帮助设置闹钟。
-    
-    用户问题: {query}
-    
-    {format_instructions}
-
-  metrics:
-    success_rate: 0.99
-    avg_steps: 3
+    test
