@@ -5,6 +5,18 @@
             "url": "http://127.0.0.1:9900/mcp",
             "enabled": true,
             "description": "演示 MCP 服务器，提供 add 工具"
+        },
+        {
+            "name": "shop_theme",
+            "url": "http://127.0.0.1:8001/mcp",
+            "enabled": true,
+            "description": "商户主题管理服务"
+        },
+        {
+            "name": "user_logs",
+            "url": "http://127.0.0.1:8002/mcp",
+            "enabled": true,
+            "description": "用户日志查询服务"
         }
     ]
 }
