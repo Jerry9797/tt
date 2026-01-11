@@ -44,10 +44,17 @@ deepseek_coder = ChatOpenAI(
         base_url="https://api.deepseek.com/v1"
 )
 
+glm_4_7 = ChatZhipuAI(
+    model="glm-4.7",
+    api_key=os.environ.get("zhipu"),
+    streaming=False,
+    temperature=0.5,
+)
 
-def get_gpt_model():
+
+def get_gpt_model(model:str = "gpt-4o-mini"):
     return ChatOpenAI(
-        model='gpt-5',
+        model=model,
         api_key=os.environ.get("close"),
         base_url="https://api.openai-proxy.org/v1"
     )

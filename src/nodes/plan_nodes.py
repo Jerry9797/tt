@@ -1,5 +1,4 @@
 import asyncio
-
 from langgraph.types import Command, interrupt
 from langchain_core.messages import SystemMessage, AIMessage, HumanMessage
 from langchain.agents import create_agent
@@ -9,7 +8,7 @@ from langchain_core.prompts import PromptTemplate, ChatPromptTemplate
 from datetime import datetime
 import time
 
-from src.config.llm import q_max, get_gpt_model, mt_llm, q_plus
+from src.config.llm import q_max, get_gpt_model, mt_llm, q_plus, get_claude_model
 from src.graph_state import AgentState, Plan
 from src.tools import (
     ALL_TOOLS,
@@ -43,17 +42,15 @@ async def planning_node(state: AgentState):
 
     plan_parser = JsonOutputParser(pydantic_object=Plan)
     format_instructions = plan_parser.get_format_instructions()
-    task_prompt = plan_prompt.format(
-        query=rewritten_query,
-        format_instructions=format_instructions
-    )
 
     from src.prompt.prompt_loader import get_prompt
     prompt = ChatPromptTemplate.from_messages([
         SystemMessage(content=get_prompt("system_prompt")),
-        SystemMessage(content=task_prompt),
+        SystemMessage(content=plan_prompt) if plan_prompt else "",
+        HumanMessage(content=rewritten_query),
+        SystemMessage(content=f"所有回复必须遵循以下格式：\n{format_instructions}"),
     ])
-    chain = prompt | q_max | JsonOutputParser()
+    chain = prompt | get_gpt_model("gpt-4.1").bind_tools(ALL_TOOLS) | JsonOutputParser()
     result = await chain.ainvoke({})
     steps = result.get('steps', [])
     
@@ -94,36 +91,30 @@ async def plan_executor_node(state: AgentState):
     # Added for new logic
     messages_to_add = []
     
-    # ⭐ 检查是否有用户刚刚的回复（用于恢复）
+    # ⭐ 使用 state 字段判断是否处于中断恢复状态（更可靠）
     user_input = None
-    messages = state.get("messages", [])
+    is_resuming = state.get("need_clarification", False)
     
-    last_ask_index = -1
-    for i in range(len(messages) - 1, -1, -1):
-        msg = messages[i]
-        if isinstance(msg, AIMessage) and "⏸️" in str(msg.content):
-            last_ask_index = i
-            break
-            
-    if last_ask_index != -1:
-        # 找到了最近的提问，检查其后是否有 HumanMessage
-        # 通常 HumanMessage 应该在 Ask 之后
-        for i in range(last_ask_index + 1, len(messages)):
-            if isinstance(messages[i], HumanMessage):
-                user_input = messages[i].content
-                # 找到第一个 HumanMessage 即停止，视为回复
-                break
-
-    if user_input:
-        print(f"[Executor] 检测到用户回复: {user_input}")
+    if is_resuming:
+        # 处于中断状态，查找用户的回复
+        messages = state.get("messages", [])
         
-        # 添加恢复消息
-        resume_message = AIMessage(
-            content=f"▶️ 收到您的回复，继续执行步骤 {current_step + 1}"
-        )
-        messages_to_add.append(resume_message)
+        # 从后往前找最近的 HumanMessage
+        for i in range(len(messages) - 1, -1, -1):
+            msg = messages[i]
+            if isinstance(msg, HumanMessage):
+                user_input = msg.content
+                print(f"[Executor] 检测到用户回复（恢复模式）: {user_input}")
+                break
+        
+        if user_input:
+            # 添加恢复消息
+            resume_message = AIMessage(
+                content=f"▶️ 收到您的回复，继续执行步骤 {current_step + 1}"
+            )
+            messages_to_add.append(resume_message)
     
-    if not user_input:
+    if not is_resuming:
         # 首次执行此步骤，添加开始消息
         start_message = AIMessage(
             content=f"🔄 开始执行步骤 {current_step + 1}/{len(plan)}: {step_description}"
@@ -150,7 +141,7 @@ async def plan_executor_node(state: AgentState):
     agent = create_agent(
         system_prompt=system_prompt,
         # model=mt_llm("gpt-4.1"),
-        model=q_plus,
+        model=get_gpt_model(),
         tools=all_tools,  # ⭐ 使用合并后的工具列表
     )
     
