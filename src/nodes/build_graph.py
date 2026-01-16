@@ -1,5 +1,7 @@
+from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.mysql.aio import AIOMySQLSaver
+from langchain.agents.middleware import wrap_tool_call
 
 from src.config.redis import client
 from src.config.mysql import get_connection, get_connection_string
@@ -18,15 +20,15 @@ _store = None
 async def build_graph(init_mcp: bool = True):
     # ⭐ 初始化 MCP 工具管理器（异步）
     # 暂时注释掉 MCP 初始化
-    # if init_mcp:
-    #     import asyncio
-    #     from src.mcp import init_mcp_manager
-    #     
-    #     try:
-    #         await init_mcp_manager()
-    #         # print("[Graph] MCP 管理器初始化完成")
-    #     except (Exception, BaseException) as e:
-    #         print(f"[Graph] MCP 初始化失败: {e}，继续使用非 MCP 工具")
+    if init_mcp:
+        import asyncio
+        from src.mcp import init_mcp_manager
+
+        try:
+            await init_mcp_manager()
+            # print("[Graph] MCP 管理器初始化完成")
+        except (Exception, BaseException) as e:
+            print(f"[Graph] MCP 初始化失败: {e}，继续使用非 MCP 工具")
     
     graph = StateGraph(AgentState)
     graph.add_node("query_rewrite_node", query_rewrite_node)

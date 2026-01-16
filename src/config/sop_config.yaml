@@ -18,14 +18,14 @@ shop_them_no_call:
     - "如果是零星商户，告知用户该商户命中零星商户卡控，建议协助商户提升星级"
     - "使用check_sensitive_merchant检查商户是否为软色情违规商户（risk_score>0.5或risk_score_v2=1）"
     - "如果是软色情违规商户，告知用户该商户因违规内容被过滤"
+    - "使用select_shop_state，查询访问商户时该商户是否正在营业"
   
   # 需要的工具
   tools:
     - check_low_star_merchant
     - check_sensitive_merchant
-    - get_visit_record_by_userid
-    - get_trace_context
-  
+    - 使用select_shop_state
+
   # Planning Prompt
   planning_prompt: |
     
@@ -38,29 +38,19 @@ shop_them_no_call:
        - shop_star=0 的商户会被系统过滤
        - 工具: check_low_star_merchant
     
-    2. **软色情违规** (约30%)
+    2. **软色情违规** (约40%)
        - risk_score>0.5 或 risk_score_v2=1
        - 工具: check_sensitive_merchant
     
-    3. **地理位置问题** (约15%)
-       - 经纬度配置错误、超出服务范围
-    
-    4. **营业状态异常** (约10%)
+    3. **营业状态异常** (约10%)
        - 不在营业时间
        - 工具: select_shop_state
-    
-    ## 诊断策略
-    **标准流程**:
-    步骤1: 确认商户ID和平台（美团mt/点评dp）
-    步骤2: 优先检查高频原因（零星、违规）
-    步骤3: 如果都正常，再查配置和链路
-    
-    ⚠️ **注意**: 需要traceId才能分析召回链路
+
     
     # 输出要求
     生成诊断步骤，每步明确"做什么"和"为什么"。
-    {format_instructions}
-  
+#    {format_instructions}
+
   # 指标
   metrics:
     success_rate: 0.85
@@ -79,20 +69,26 @@ display_field_missing:
   owner: "前端展示组"
   
   steps:
-    - "确认用户反馈的缺失字段名称（如：distance, rating, businessHours）"
+    - "确认用户反馈的缺失字段名称"
+    - "如果是距离缺失，优先检查入参是否缺少经纬度参数"
     - "获取必要信息：userId（必须）+ 访问时间（必须）"
     - "使用get_visit_record_by_userid查询用户访问记录，获取trace_id"
     - "使用get_trace_context从trace_id中提取：sceneCode, expId, 请求参数"
-    - "使用get_experiment_detail根据expId查询实验详情和分组配置"
-    - "分析用户所在分组是否隐藏了该字段"
-    - "如果是实验导致，告知实验名称、负责人和预期时间；否则检查Fetcher逻辑"
+    - "根据sceneCode查询get_qpro_by_scene_code获取qpro配置,字段逻辑一般在OPT文件中"
+    - "根据OPT类名查询get_code_by_class_name获取源代码"
+    - "根据OPT类名查询get_qpro_config_by_class_name获取该类对应的配置内容"
+    - "判断代码逻辑是否存在BUG"
+    - "判断实验，如果是实验导致，告知实验名称、负责人和预期时间；否则检查Fetcher逻辑"
   
   tools:
     - get_visit_record_by_userid
     - get_trace_context
-    - get_plan_id_by_scene_code
-    - get_document_fetcher_config
-    - get_experiment_detail
+    - get_qpro_by_scene_code
+    - get_code_by_class_name
+    - get_qpro_config_by_class_name
+#    - get_plan_id_by_scene_code
+#    - get_document_fetcher_config
+#    - get_experiment_detail
   
   planning_prompt: |
     # 角色定义

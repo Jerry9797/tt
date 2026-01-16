@@ -1,8 +1,11 @@
 from typing import Literal, Dict, Any
+
+from langchain_classic.memory import ConversationBufferWindowMemory
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.types import Command, interrupt
+from langchain_core.runnables import Runnable, RunnableParallel, RunnablePassthrough
 
 from src.config.llm import q_plus
 from src.graph_state import AgentState
@@ -18,7 +21,14 @@ async def query_rewrite_node(state: AgentState):
     query_rewrite_prompt = ChatPromptTemplate.from_template(
         get_prompt("query_rewrite")
     )
-    chain = query_rewrite_prompt | q_plus | JsonOutputParser()
+
+    chain : Runnable = (
+            query_rewrite_prompt
+            | q_plus
+            | JsonOutputParser()
+    )
+
+    # chain = query_rewrite_prompt | q_plus | JsonOutputParser()
     ret = await chain.ainvoke({"query": original_query, "history": history_str})
 
     if ret.get("need_clarification"):
