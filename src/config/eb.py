@@ -1,10 +1,15 @@
 import os
 
 from langchain_community.embeddings import DashScopeEmbeddings,zhipuai
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 def TongyiEmbedding()->DashScopeEmbeddings:
-    api_key=os.environ.get("tongyi")
+    api_key = os.environ.get("tongyi") or os.environ.get("DASHSCOPE_API_KEY")
+    if not api_key:
+        raise ValueError("Missing DashScope API key. Set `tongyi` or `DASHSCOPE_API_KEY` in the environment.")
     return DashScopeEmbeddings(dashscope_api_key=api_key,
                            model="text-embedding-v1")
 

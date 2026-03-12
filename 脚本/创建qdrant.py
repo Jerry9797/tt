@@ -1,5 +1,11 @@
+import sys
+from pathlib import Path
+
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct
+
+project_root = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(project_root))
 
 from src.config.eb import TongyiEmbedding
 

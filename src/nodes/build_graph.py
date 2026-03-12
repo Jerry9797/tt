@@ -44,9 +44,19 @@ async def build_graph(init_mcp: bool = True):
     # edge
     graph.set_entry_point("query_rewrite_node")
 
-    # query_rewrite_node 默认连向 faq_retrieve_node
-    # 跳转到 ask_human 的边通过 Command 动态处理
-    graph.add_edge("query_rewrite_node", "faq_retrieve_node")
+    def router_query_rewrite(state: AgentState):
+        if state.get("need_clarification"):
+            return "ask_human"
+        return "faq_retrieve_node"
+
+    graph.add_conditional_edges(
+        "query_rewrite_node",
+        router_query_rewrite,
+        {
+            "ask_human": "ask_human",
+            "faq_retrieve_node": "faq_retrieve_node",
+        },
+    )
 
     graph.add_edge("faq_retrieve_node", "sop_match_node")
 

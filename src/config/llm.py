@@ -66,7 +66,7 @@ def get_claude_model():
         base_url="https://api.openai-proxy.org/anthropic"
     )
 
-def mt_llm(model:str = "qwen-max-latest"):
+def mt_llm(model:str = "gpt-4.1"):
     return ChatOpenAI(
         model=model,
         api_key=os.environ.get("mt"),

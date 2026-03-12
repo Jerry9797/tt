@@ -1,10 +1,17 @@
+import os
 from typing import List
 from qdrant_client import QdrantClient
 from qdrant_client.models import PointStruct
+from dotenv import load_dotenv
 
 from src.config.eb import TongyiEmbedding
 
-client = QdrantClient(host="23.91.97.241", port=6333)
+load_dotenv()
+
+client = QdrantClient(
+    host=os.getenv("QDRANT_HOST", "23.91.97.241"),
+    port=int(os.getenv("QDRANT_PORT", 6333)),
+)
 eb = TongyiEmbedding()
 
 def qdrant_select(query: str,score_threshold : float = 0.75, collection_name: str = "dz_channel_faq"):
@@ -49,4 +56,3 @@ def qdrant_insert_faq(faq_list: List[dict], collection_name : str = "dz_channel_
         )
     if points:
         client.upsert(collection_name=collection_name, points=points)
-

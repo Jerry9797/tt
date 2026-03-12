@@ -60,7 +60,7 @@ from langgraph.errors import GraphInterrupt
 async def chat(request: ChatRequest):
     graph = None
     try:
-        graph = await build_graph()
+        graph = await build_graph(init_mcp=False)
         config = {"configurable": {"thread_id": request.thread_id or "default_thread"}}
         result = {} # Initialize result
 

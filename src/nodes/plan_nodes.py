@@ -140,8 +140,8 @@ async def plan_executor_node(state: AgentState):
     # 创建Agent
     agent = create_agent(
         system_prompt=system_prompt,
-        # model=mt_llm("gpt-4.1"),
-        model=get_gpt_model(),
+        # 本地环境的 openai-proxy token 已失效，执行节点优先走已验证可用的通义模型。
+        model=q_plus,
         tools=all_tools,  # ⭐ 使用合并后的工具列表
     )
     
@@ -578,4 +578,3 @@ async def replan_node(state: AgentState) -> dict:
         return {
             "messages": [error_message]
         }
-

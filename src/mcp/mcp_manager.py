@@ -44,6 +44,9 @@ class MCPToolManager:
         server_name = server_config.name
         url = server_config.url
         
+        stream_context = None
+        session = None
+
         try:
             print(f"[MCP Manager] 正在连接到 {server_name} ({url})...")
             
@@ -67,7 +70,23 @@ class MCPToolManager:
             print(f"[MCP Manager] ✅ 成功连接到 {server_name}")
             return True
         
-        except (Exception, BaseException) as e:
+        except BaseException as e:
+            # 连接失败时显式退出已进入的上下文，避免取消作用域泄漏到后续 await。
+            if session is not None:
+                try:
+                    await session.__aexit__(type(e), e, e.__traceback__)
+                except Exception:
+                    pass
+
+            if stream_context is not None:
+                try:
+                    await stream_context.__aexit__(type(e), e, e.__traceback__)
+                except Exception:
+                    pass
+
+            self._stream_contexts.pop(server_name, None)
+            self._sessions.pop(server_name, None)
+
             # Handle BaseExceptionGroup from anyio/httpx
             error_msg = str(e)
             if "ConnectError" in error_msg or "connection attempts failed" in error_msg:

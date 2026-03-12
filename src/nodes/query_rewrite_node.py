@@ -1,11 +1,6 @@
-from typing import Literal, Dict, Any
-
-from langchain_classic.memory import ConversationBufferWindowMemory
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
-from langchain_core.messages import AIMessage, HumanMessage
-from langgraph.types import Command, interrupt
-from langchain_core.runnables import Runnable, RunnableParallel, RunnablePassthrough
+from langchain_core.runnables import Runnable
 
 from src.config.llm import q_plus
 from src.graph_state import AgentState
@@ -33,14 +28,16 @@ async def query_rewrite_node(state: AgentState):
 
     if ret.get("need_clarification"):
         print(f"需要澄清: {ret.get('clarifying_question')}")
-        return Command(goto="ask_human", update={
+        return {
             "need_clarification": ret.get("need_clarification"),
             "response": ret.get("clarifying_question"),
             "return_to": "query_rewrite_node",
-        })
+            "rewritten_query": original_query,
+            "keywords": ret.get("keywords", [])
+        }
 
     return {
+        "need_clarification": False,
         "rewritten_query": ret.get("rewritten_query", original_query),
         "keywords": ret.get("keywords", [])
     }
-
