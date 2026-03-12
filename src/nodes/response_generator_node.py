@@ -7,10 +7,12 @@
 - 使用专门提示词生成结构化答案
 - 添加必要的上下文和建议
 """
+from typing import AsyncIterator
+
 from langchain_core.messages import AIMessage
 from langchain_core.prompts import ChatPromptTemplate
 
-from src.config.llm import q_plus
+from src.config.llm import get_q_plus
 from src.graph_state import AgentState
 from src.prompt.prompt_loader import get_prompt
 
@@ -27,31 +29,18 @@ async def response_generator_node(state: AgentState) -> dict:
     """
     print("\n[ResponseGenerator] 开始生成最终答案...")
     
-    query = state.get("query", "")
-    intent = state.get("intent", "未知")
-    step_results = state.get("step_results", [])
+    payload = build_response_generation_payload(state)
     
-    # 构建步骤摘要
-    steps_summary = build_steps_summary(step_results)
-    
-    # 提取工具调用结果
-    tool_results = extract_tool_results(step_results)
-    
-    print(f"[ResponseGenerator] 步骤数: {len(step_results)}")
-    print(f"[ResponseGenerator] 摘要长度: {len(steps_summary)} 字符")
+    print(f"[ResponseGenerator] 步骤数: {len(state.get('step_results', []))}")
+    print(f"[ResponseGenerator] 摘要长度: {len(payload['steps_summary'])} 字符")
     
     # 使用专门的提示词生成答案
     response_prompt = ChatPromptTemplate.from_template(
         get_prompt("response_generation")
     )
     
-    chain = response_prompt | q_plus
-    result = await chain.ainvoke({
-        "query": query,
-        "intent": intent,
-        "steps_summary": steps_summary,
-        "tool_results": tool_results
-    })
+    chain = response_prompt | get_q_plus(streaming=True)
+    result = await chain.ainvoke(payload)
     
     final_response = result.content
     
@@ -66,6 +55,37 @@ async def response_generator_node(state: AgentState) -> dict:
         "response": final_response,
         "messages": [response_message]
     }
+
+
+def build_response_generation_payload(state: AgentState) -> dict:
+    query = state.get("query", "")
+    intent = state.get("intent", "未知")
+    step_results = state.get("step_results", [])
+
+    return {
+        "query": query,
+        "intent": intent,
+        "steps_summary": build_steps_summary(step_results),
+        "tool_results": extract_tool_results(step_results),
+    }
+
+
+async def stream_response_generation(state: AgentState) -> AsyncIterator[str]:
+    response_prompt = ChatPromptTemplate.from_template(
+        get_prompt("response_generation")
+    )
+    chain = response_prompt | get_q_plus(streaming=True)
+
+    async for chunk in chain.astream(build_response_generation_payload(state)):
+        content = getattr(chunk, "content", "")
+        if isinstance(content, str) and content:
+            yield content
+        elif isinstance(content, list):
+            text = "".join(
+                item.get("text", "") for item in content if isinstance(item, dict)
+            )
+            if text:
+                yield text
 
 
 def build_steps_summary(step_results: list) -> str:

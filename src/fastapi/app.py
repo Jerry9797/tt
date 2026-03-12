@@ -1,7 +1,20 @@
-from fastapi import FastAPI, HTTPException, Request
+import json
+import sys
+from datetime import datetime
+from enum import Enum
+from pathlib import Path
+from typing import Any, AsyncIterator, Dict, List, Optional
+
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import StreamingResponse
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+from langgraph.errors import GraphInterrupt
 from langgraph.types import Command
-from pydantic import BaseModel
-from typing import List, Optional, Any, Dict
+from pydantic import BaseModel, Field
+
+# 将项目根目录添加到 sys.path，支持直接用 `python src/fastapi/app.py` 启动。
+project_root = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(project_root))
 
 from src.graph_state import AgentState
 from src.nodes.build_graph import build_graph
@@ -12,18 +25,15 @@ app = FastAPI(
     version="v0.1",
 )
 
-from langchain_core.messages import HumanMessage, AIMessage
 
-# Request Model
 class ChatRequest(BaseModel):
     query: Optional[str] = None
     thread_id: Optional[str] = None
     resume_input: Optional[str] = None
     history: Optional[List[dict]] = []
 
-# Step Result Response Model
+
 class StepResultResponse(BaseModel):
-    """步骤结果响应"""
     step_index: int
     description: str
     status: str
@@ -35,7 +45,7 @@ class StepResultResponse(BaseModel):
     tool_calls: List[Dict[str, Any]] = []
     token_usage: Optional[Dict[str, int]] = None
 
-# Response Model
+
 class ChatResponse(BaseModel):
     query: Optional[str] = None
     intent: Optional[str] = None
@@ -44,146 +54,343 @@ class ChatResponse(BaseModel):
     response: Optional[str] = None
     thread_id: Optional[str] = None
     status: str = "success"
-    
-    # ⭐ 新增: 步骤执行结果
     step_results: Optional[List[StepResultResponse]] = None
-    
-    # ⭐ 新增: 执行摘要
     execution_summary: Optional[Dict[str, Any]] = None
 
-# Initialize graph
+
+class StreamMessageResponse(BaseModel):
+    id: Optional[str] = None
+    type: str
+    content: str = ""
 
 
-from langgraph.errors import GraphInterrupt
+class StreamEventResponse(BaseModel):
+    thread_id: str
+    mode: str
+    data: Dict[str, Any] = Field(default_factory=dict)
 
-@app.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
+
+def build_initial_state(request: ChatRequest) -> AgentState:
+    initial_state = AgentState()
+    initial_state["original_query"] = request.query
+    initial_state["plan"] = []
+    initial_state["current_step"] = 0
+    initial_state["past_steps"] = []
+
+    messages = []
+    for msg in request.history or []:
+        if msg.get("role") == "user":
+            messages.append(HumanMessage(content=msg.get("content")))
+        elif msg.get("role") == "assistant":
+            messages.append(AIMessage(content=msg.get("content")))
+    initial_state["messages"] = messages
+    return initial_state
+
+
+def serialize_step_results(step_results: Optional[List[Any]]) -> Optional[List[StepResultResponse]]:
+    if not step_results:
+        return None
+
+    return [
+        StepResultResponse(
+            step_index=result.step_index,
+            description=result.step_description,
+            status=result.status.value if hasattr(result.status, "value") else str(result.status),
+            start_time=result.start_time.isoformat() if result.start_time else None,
+            end_time=result.end_time.isoformat() if result.end_time else None,
+            duration_ms=result.duration_ms,
+            output=result.output_result,
+            error=result.error_message,
+            tool_calls=[],
+            token_usage=result.token_usage.dict() if result.token_usage else None,
+        )
+        for result in step_results
+    ]
+
+
+def serialize_execution_summary(summary: Any) -> Optional[Dict[str, Any]]:
+    if not summary:
+        return None
+
+    return {
+        "plan_id": getattr(summary, "plan_id", None),
+        "query": summary.query,
+        "intent": summary.intent,
+        "is_sop": summary.is_sop,
+        "total_steps": summary.total_steps,
+        "completed_steps": summary.completed_steps,
+        "failed_steps": summary.failed_steps,
+        "overall_status": summary.overall_status.value if hasattr(summary.overall_status, "value") else str(summary.overall_status),
+        "total_duration_ms": summary.total_duration_ms,
+        "start_time": summary.start_time.isoformat() if summary.start_time else None,
+        "end_time": summary.end_time.isoformat() if summary.end_time else None,
+        "token_usage": summary.total_token_usage.dict() if summary.total_token_usage else None,
+    }
+
+
+def build_chat_response(result: Dict[str, Any], request: ChatRequest, thread_id: str, status: str = "success") -> ChatResponse:
+    return ChatResponse(
+        query=result.get("original_query", request.query),
+        intent=result.get("intent"),
+        faq_response=result.get("faq_response"),
+        plan=result.get("plan"),
+        response=result.get("response"),
+        thread_id=thread_id,
+        status=status,
+        step_results=serialize_step_results(result.get("step_results")),
+        execution_summary=serialize_execution_summary(result.get("execution_summary")),
+    )
+
+
+def extract_interrupt_question(state_snapshot: Any) -> Optional[str]:
+    tasks = list(state_snapshot.tasks)
+    if not tasks or not tasks[0].interrupts:
+        return None
+
+    interrupt_value = tasks[0].interrupts[0].value
+    if isinstance(interrupt_value, str):
+        return interrupt_value
+    if isinstance(interrupt_value, dict):
+        return interrupt_value.get("question", str(interrupt_value))
+    return str(interrupt_value)
+
+
+def build_graph_input(request: ChatRequest) -> AgentState | Command:
+    if request.resume_input:
+        print(f"中断恢复: {request.resume_input}")
+        return Command(resume=request.resume_input)
+
+    print("TT running...")
+    return build_initial_state(request)
+
+
+async def execute_chat_request(request: ChatRequest) -> tuple[Dict[str, Any], str]:
     graph = None
     try:
         graph = await build_graph(init_mcp=False)
-        config = {"configurable": {"thread_id": request.thread_id or "default_thread"}}
-        result = {} # Initialize result
+        thread_id = request.thread_id or "default_thread"
+        config = {"configurable": {"thread_id": thread_id}}
+        result = {}
 
-        # 1. 检查是否是 "Resume" (Clarification Response)
-        if request.resume_input:
-            print(f"中断恢复: {request.resume_input}")
-            # 使用 Command 恢复中断
-            # 注意: ainvoke 可能会因为再次中断而抛出 GraphInterrupt 或直接返回
-            try:
-                result = await graph.ainvoke(Command(resume=request.resume_input), config=config)
-            except GraphInterrupt:
-                print("Graph execution interrupted (resume).")
-            
-        else:
-            print("TT running...")
-            # 2. 处理新请求
-            initial_state = AgentState()
-            initial_state['original_query'] = request.query
-            initial_state['plan'] = []
-            initial_state['current_step'] = 0
-            initial_state['past_steps'] = []
-            
-            # 处理历史消息
-            messages = []
-            for msg in request.history:
-                if msg.get('role') == 'user':
-                    messages.append(HumanMessage(content=msg.get('content')))
-                elif msg.get('role') == 'assistant':
-                    messages.append(AIMessage(content=msg.get('content')))
-            initial_state['messages'] = messages
+        try:
+            result = await graph.ainvoke(build_graph_input(request), config=config)
+        except GraphInterrupt:
+            print("Graph execution interrupted.")
 
-            # 执行 Graph（异步）
-            try:
-                result = await graph.ainvoke(initial_state, config=config)
-            except GraphInterrupt:
-                print("Graph execution interrupted (new request).")
-
-        # 3. 检查是否中断 (Generic Interrupt)
-        # ⭐ 使用 aget_state (异步)
         state_snapshot = await graph.aget_state(config)
-        tasks = list(state_snapshot.tasks)
-        if tasks and tasks[0].interrupts:
-            # 获取中断信息
-            interrupt_value = tasks[0].interrupts[0].value
-            question = interrupt_value if isinstance(interrupt_value, str) else interrupt_value.get("question", str(interrupt_value))
-            
-            return ChatResponse(
-                response=question,
-                thread_id=config["configurable"]["thread_id"],
-                status="need_clarification"
+        question = extract_interrupt_question(state_snapshot)
+        if question:
+            return (
+                {
+                    "response": question,
+                    "thread_id": thread_id,
+                },
+                "need_clarification",
             )
 
-        # 4. 正常结束 (只有在没有中断时才返回结果)
-        # 如果 result 为空且没有中断，说明出现了异常情况
         if result is None:
-            # 如果是 ainvoke 返回 None，可能是状态未改变或其他原因
-            result = {}
-            if state_snapshot and state_snapshot.values:
-                # 尝试从最新状态中获取结果，如果 ainvoke 没有返回完整状态
-                result = state_snapshot.values
-        
-        # 转换步骤结果
-        step_results_response = None
-        if "step_results" in result and result["step_results"]:
-            step_results_response = [
-                StepResultResponse(
-                    step_index=r.step_index,
-                    description=r.step_description,
-                    status=r.status.value if hasattr(r.status, 'value') else str(r.status),
-                    start_time=r.start_time.isoformat() if r.start_time else None,
-                    end_time=r.end_time.isoformat() if r.end_time else None,
-                    duration_ms=r.duration_ms,
-                    output=r.output_result,
-                    error=r.error_message,
-                    tool_calls=[],  # StepExecutionResult 没有 tool_calls 字段
-                    token_usage=r.token_usage.dict() if r.token_usage else None
-                )
-                for r in result["step_results"]
-            ]
-        
-        # 转换执行摘要
-        execution_summary_response = None
-        if "execution_summary" in result and result["execution_summary"]:
-            summary = result["execution_summary"]
-            execution_summary_response = {
-                "plan_id": summary.plan_id,
-                "query": summary.query,
-                "intent": summary.intent,
-                "is_sop": summary.is_sop,
-                "total_steps": summary.total_steps,
-                "completed_steps": summary.completed_steps,
-                "failed_steps": summary.failed_steps,
-                "overall_status": summary.overall_status.value if hasattr(summary.overall_status, 'value') else str(summary.overall_status),
-                "total_duration_ms": summary.total_duration_ms,
-                "start_time": summary.start_time.isoformat() if summary.start_time else None,
-                "end_time": summary.end_time.isoformat() if summary.end_time else None,
-                "token_usage": summary.total_token_usage.dict() if summary.total_token_usage else None
-            }
+            result = state_snapshot.values or {}
 
-        return ChatResponse(
-            query=result.get("original_query", request.query),
-            intent=result.get("intent"),
-            faq_response=result.get("faq_response"),
-            plan=result.get("plan"),
-            response=result.get("response"),
-            thread_id=config["configurable"]["thread_id"],
-            status="success",
-            step_results=step_results_response,
-            execution_summary=execution_summary_response
+        return result, "success"
+    finally:
+        await cleanup_runtime(graph)
+
+
+async def cleanup_runtime(graph: Any) -> None:
+    try:
+        from src.mcp.mcp_manager import cleanup_mcp_manager
+
+        await cleanup_mcp_manager()
+    except Exception as exc:
+        print(f"Error cleaning MCP manager: {exc}")
+
+    if graph and hasattr(graph.checkpointer, "conn"):
+        try:
+            graph.checkpointer.conn.close()
+        except Exception as exc:
+            print(f"Error closing DB connection: {exc}")
+
+
+def encode_sse(event: str, data: Dict[str, Any]) -> str:
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+def normalize_message_content(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                text = item.get("text")
+                if isinstance(text, str):
+                    parts.append(text)
+        return "".join(parts)
+    return str(content) if content is not None else ""
+
+
+def make_json_safe(value: Any) -> Any:
+    if isinstance(value, BaseMessage):
+        return StreamMessageResponse(
+            id=value.id,
+            type=value.type,
+            content=normalize_message_content(value.content),
+        ).model_dump()
+    if isinstance(value, BaseModel):
+        return make_json_safe(value.model_dump())
+    if isinstance(value, dict):
+        return {key: make_json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [make_json_safe(item) for item in value]
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, Enum):
+        return value.value
+    return value
+
+
+def build_updates_event_payload(thread_id: str, update: Dict[str, Any]) -> StreamEventResponse:
+    node_name, payload = next(iter(update.items()))
+    return StreamEventResponse(
+        thread_id=thread_id,
+        mode="updates",
+        data={
+            "node": node_name,
+            "payload": make_json_safe(payload),
+        },
+    )
+
+
+def build_messages_event_payload(
+    thread_id: str,
+    message: BaseMessage,
+    metadata: Dict[str, Any],
+) -> StreamEventResponse:
+    return StreamEventResponse(
+        thread_id=thread_id,
+        mode="messages",
+        data={
+            "message": make_json_safe(message),
+            "metadata": make_json_safe(metadata),
+        },
+    )
+
+
+async def emit_graph_stream(
+    graph: Any,
+    graph_input: AgentState | Command,
+    config: Dict[str, Any],
+) -> AsyncIterator[str]:
+    async for update in graph.astream(
+        graph_input,
+        config=config,
+        stream_mode=["updates", "messages"],
+    ):
+        if not isinstance(update, tuple) or len(update) != 2:
+            continue
+
+        mode, chunk = update
+        thread_id = config["configurable"]["thread_id"]
+
+        if mode == "updates" and isinstance(chunk, dict) and chunk:
+            yield encode_sse(
+                "updates",
+                build_updates_event_payload(thread_id, chunk).model_dump(),
+            )
+        elif mode == "messages" and isinstance(chunk, tuple) and len(chunk) == 2:
+            message, metadata = chunk
+            if isinstance(message, BaseMessage) and isinstance(metadata, dict):
+                yield encode_sse(
+                    "messages",
+                    build_messages_event_payload(thread_id, message, metadata).model_dump(),
+                )
+
+
+@app.post("/chat", response_model=ChatResponse)
+async def chat(request: ChatRequest):
+    try:
+        result, status = await execute_chat_request(request)
+        return build_chat_response(
+            result=result,
+            request=request,
+            thread_id=request.thread_id or "default_thread",
+            status=status,
         )
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception as exc:
         import traceback
+
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        # 显式关闭数据库连接，防止 loop closed error
-        if graph and hasattr(graph.checkpointer, 'conn'):
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post("/chat/stream")
+async def chat_stream(request: ChatRequest):
+    async def event_generator() -> AsyncIterator[str]:
+        graph = None
+        thread_id = request.thread_id or "default_thread"
+        config = {"configurable": {"thread_id": thread_id}}
+
+        try:
+            graph = await build_graph(init_mcp=False)
+            yield encode_sse(
+                "metadata",
+                {
+                    "thread_id": thread_id,
+                    "mode": "metadata",
+                    "data": {"message": "started"},
+                },
+            )
+
             try:
-                graph.checkpointer.conn.close()
-            except Exception as e:
-                print(f"Error closing DB connection: {e}")
+                async for event in emit_graph_stream(graph, build_graph_input(request), config):
+                    yield event
+            except GraphInterrupt:
+                print("Graph stream interrupted.")
+
+            state_snapshot = await graph.aget_state(config)
+            question = extract_interrupt_question(state_snapshot)
+            if question:
+                yield encode_sse(
+                    "clarification",
+                    {
+                        "thread_id": thread_id,
+                        "mode": "clarification",
+                        "data": {"question": question},
+                    },
+                )
+                return
+
+            state = state_snapshot.values or {}
+            response = build_chat_response(state, request, thread_id, status="success")
+            yield encode_sse(
+                "final",
+                {
+                    "thread_id": thread_id,
+                    "mode": "final",
+                    "data": response.model_dump(),
+                },
+            )
+        except Exception as exc:
+            import traceback
+
+            traceback.print_exc()
+            yield encode_sse(
+                "error",
+                {
+                    "thread_id": thread_id,
+                    "mode": "error",
+                    "data": {"message": str(exc)},
+                },
+            )
+        finally:
+            await cleanup_runtime(graph)
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
 
 @app.get("/health")
 async def health_check():
@@ -192,81 +399,55 @@ async def health_check():
 
 @app.get("/execution/{thread_id}")
 async def get_execution_history(thread_id: str):
-    """查询某个会话的执行历史"""
+    graph = None
     try:
-        graph = build_graph()
+        graph = await build_graph(init_mcp=False)
         config = {"configurable": {"thread_id": thread_id}}
-        # ⭐ 使用 aget_state (异步)
         state_snapshot = await graph.aget_state(config)
-        
+
         if not state_snapshot or not state_snapshot.values:
             raise HTTPException(status_code=404, detail="会话不存在")
-        
+
         state = state_snapshot.values
-        step_results = state.get("step_results", [])
-        execution_summary = state.get("execution_summary")
-        
         return {
             "thread_id": thread_id,
             "query": state.get("query"),
             "plan": state.get("plan"),
             "step_results": [
-                {
-                    "step_index": r.step_index,
-                    "description": r.step_description,
-                    "status": r.status.value if hasattr(r.status, 'value') else str(r.status),
-                    "start_time": r.start_time.isoformat() if r.start_time else None,
-                    "end_time": r.end_time.isoformat() if r.end_time else None,
-                    "duration_ms": r.duration_ms,
-                    "output": r.output_result,
-                    "error": r.error_message,
-                    "tool_calls": [],  # StepExecutionResult 没有 tool_calls 字段
-                    "token_usage": r.token_usage.dict() if r.token_usage else None
-                }
-                for r in step_results
+                item.model_dump()
+                for item in (serialize_step_results(state.get("step_results")) or [])
             ],
-            "execution_summary": {
-                "plan_id": execution_summary.plan_id,
-                "query": execution_summary.query,
-                "intent": execution_summary.intent,
-                "is_sop": execution_summary.is_sop,
-                "total_steps": execution_summary.total_steps,
-                "completed_steps": execution_summary.completed_steps,
-                "failed_steps": execution_summary.failed_steps,
-                "overall_status": execution_summary.overall_status.value if hasattr(execution_summary.overall_status, 'value') else str(execution_summary.overall_status),
-                "overall_status": execution_summary.overall_status.value if hasattr(execution_summary.overall_status, 'value') else str(execution_summary.overall_status),
-                "total_duration_ms": execution_summary.total_duration_ms,
-                "start_time": execution_summary.start_time.isoformat() if execution_summary.start_time else None,
-                "end_time": execution_summary.end_time.isoformat() if execution_summary.end_time else None,
-                "token_usage": execution_summary.total_token_usage.dict() if execution_summary.total_token_usage else None
-            } if execution_summary else None
+            "execution_summary": serialize_execution_summary(state.get("execution_summary")),
         }
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception as exc:
         import traceback
+
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(exc))
+    finally:
+        await cleanup_runtime(graph)
 
 
 @app.get("/execution/{thread_id}/step/{step_index}")
 async def get_step_detail(thread_id: str, step_index: int):
-    """查询某个步骤的详细信息"""
     try:
         history = await get_execution_history(thread_id)
-        
         steps = history.get("step_results", [])
-        matching_steps = [s for s in steps if s["step_index"] == step_index]
-        
+        matching_steps = [step for step in steps if step["step_index"] == step_index]
+
         if not matching_steps:
             raise HTTPException(status_code=404, detail=f"步骤 {step_index} 不存在")
-        
+
         return matching_steps[0]
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)

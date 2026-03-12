@@ -8,16 +8,16 @@ from langchain_community.chat_models import ChatTongyi, ChatZhipuAI
 load_dotenv()
 
 
-q_max = ChatTongyi(
-    model="qwen-max",
-    api_key=os.environ.get("tongyi"),
-    streaming=False,
+q_max = ChatOpenAI(
+    model="gpt-4.1",
+    api_key=os.environ.get("mt"),
+    base_url="https://aigc.sankuai.com/v1/openai/native",
 )
 
-q_plus = ChatTongyi(
-    model="qwen-plus",
-    api_key=os.environ.get("tongyi"),
-    streaming=False,
+q_plus = ChatOpenAI(
+    model="gpt-4.1",
+    api_key=os.environ.get("mt"),
+    base_url="https://aigc.sankuai.com/v1/openai/native",
 )
 
 q_coder_plus = ChatTongyi(
@@ -26,9 +26,10 @@ q_coder_plus = ChatTongyi(
     streaming=False,
 )
 
-q_intent = ChatTongyi(
-    model="tongyi-intent-detect-v3",
-    api_key=os.environ.get("tongyi"),
+q_intent = ChatOpenAI(
+    model="gpt-4.1",
+    api_key=os.environ.get("mt"),
+    base_url="https://aigc.sankuai.com/v1/openai/native",
 )
 
 zhipu_flash = ChatZhipuAI(
@@ -52,6 +53,15 @@ glm_4_7 = ChatZhipuAI(
 )
 
 
+def get_q_plus(streaming: bool = False):
+    return ChatOpenAI(
+        model="gpt-4.1",
+        api_key=os.environ.get("mt"),
+        base_url="https://aigc.sankuai.com/v1/openai/native",
+        streaming=streaming,
+    )
+
+
 def get_gpt_model(model:str = "gpt-4o-mini"):
     return ChatOpenAI(
         model=model,
@@ -66,9 +76,10 @@ def get_claude_model():
         base_url="https://api.openai-proxy.org/anthropic"
     )
 
-def mt_llm(model:str = "gpt-4.1"):
+def mt_llm(model:str = "gpt-4.1", streaming: bool = False):
     return ChatOpenAI(
         model=model,
         api_key=os.environ.get("mt"),
-        base_url="https://aigc.sankuai.com/v1/openai/native"
+        base_url="https://aigc.sankuai.com/v1/openai/native",
+        # streaming=streaming,
     )

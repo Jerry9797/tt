@@ -3,13 +3,13 @@ import uuid
 import json
 import sys
 import asyncio
+import requests
 from pathlib import Path
 
 # 将项目根目录添加到 sys.path
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from src.fastapi.app import chat, ChatRequest
 from src.nodes.build_graph import build_graph
 from src.utils.time_travel_utils import (
     get_state_history,
@@ -19,9 +19,64 @@ from src.utils.time_travel_utils import (
     update_and_continue, get_all_thread_ids
 )
 
+API_BASE_URL = "http://127.0.0.1:8000"
+CHAT_STREAM_URL = f"{API_BASE_URL}/chat/stream"
+
 st.set_page_config(page_title="ces", layout="wide")
 
 st.title("🤖 ces")
+
+
+def format_reply_text(result: dict) -> str:
+    if result.get("status") == "need_clarification":
+        return f"**[需要澄清]** {result.get('response', '')}"
+
+    reply_parts = []
+
+    if result.get("response"):
+        reply_parts.append(result["response"])
+
+    if result.get("faq_response"):
+        reply_parts.append(f"**FAQ Answer:**\n{result['faq_response']}")
+
+    if result.get("plan"):
+        plan_str = "\n".join([f"- {step}" for step in result["plan"]])
+        reply_parts.append(f"**Plan:**\n{plan_str}")
+
+    if result.get("intent"):
+        reply_parts.append(f"**Intent:** `{result['intent']}`")
+
+    summary = result.get("execution_summary")
+    if summary:
+        stats_parts = []
+        if summary.get("total_duration_ms") is not None:
+            stats_parts.append(f"⏱️ {summary['total_duration_ms']:.0f}ms")
+        if summary.get("token_usage"):
+            usage = summary["token_usage"]
+            stats_parts.append(
+                f"🪙 {usage.get('total_tokens', 0)} (In: {usage.get('prompt_tokens', 0)}, Out: {usage.get('completion_tokens', 0)})"
+            )
+        if stats_parts:
+            reply_parts.append(" | ".join(stats_parts))
+
+    return "\n\n---\n\n".join(reply_parts) if reply_parts else json.dumps(result, ensure_ascii=False, indent=2)
+
+
+def extract_message_text(message: dict) -> str:
+    content = message.get("content", "")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                text = item.get("text")
+                if isinstance(text, str):
+                    parts.append(text)
+        return "".join(parts)
+    return str(content) if content is not None else ""
 
 # 初始化 Session State
 if "messages" not in st.session_state:
@@ -272,86 +327,117 @@ if prompt := st.chat_input("Input your query..."):
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # 2. 调用 API 的 chat 方法
+    # 2. 调用流式 API
     with st.chat_message("assistant"):
         message_placeholder = st.empty()
+        progress_placeholder = st.empty()
         message_placeholder.markdown("Thinking...")
         
         try:
-            # 构造请求对象
             request_data = {
                 "thread_id": st.session_state.thread_id,
-                "history": [] # 历史消息通常在第一次请求时可选，Graph 内部有持久化
+                "history": []
             }
             
             if st.session_state.waiting_for_clarification:
                 request_data["resume_input"] = prompt
             else:
                 request_data["query"] = prompt
-                # 仅在第一次或特殊情况下传递前端历史，这里保持简单
                 frontend_history = []
                 for msg in st.session_state.messages[:-1]:
                     role = "user" if msg["role"] == "user" else "assistant"
                     frontend_history.append({"role": role, "content": msg["content"]})
                 request_data["history"] = frontend_history
 
-            chat_request = ChatRequest(**request_data)
-            
-            # 直接调用 API 内部的 chat 函数 (async)
-            # 使用 asyncio.run 在同步环境中运行异步函数
-            
-            async def run_chat_with_cleanup():
-                try:
-                    return await chat(chat_request)
-                finally:
-                    # 确保 MCP 资源释放，防止 loop closed error
-                    # chat 内部可能初始化了 MCP (如果 build_graph init_mcp=True)
-                    from src.mcp.mcp_manager import cleanup_mcp_manager
-                    await cleanup_mcp_manager()
-            
-            result = asyncio.run(run_chat_with_cleanup())
-            
-            # 3. 处理响应
-            if result.status == "need_clarification":
+            progress_lines = []
+            answer_text = ""
+            final_result = None
+
+            with requests.post(CHAT_STREAM_URL, json=request_data, stream=True, timeout=300) as response:
+                response.raise_for_status()
+
+                current_event = None
+                for raw_line in response.iter_lines(decode_unicode=True):
+                    if raw_line is None:
+                        continue
+
+                    line = raw_line.strip()
+                    if not line:
+                        continue
+
+                    if line.startswith("event:"):
+                        current_event = line.split(":", 1)[1].strip()
+                        continue
+
+                    if not line.startswith("data:"):
+                        continue
+
+                    payload = json.loads(line.split(":", 1)[1].strip())
+                    event_type = current_event or payload.get("mode")
+                    data = payload.get("data", {})
+
+                    if event_type == "metadata":
+                        continue
+                    elif event_type == "updates":
+                        node = data.get("node")
+                        payload_data = data.get("payload", {})
+                        if node:
+                            progress_lines.append(f"- Running `{node}`")
+                            progress_placeholder.markdown("**Progress**\n" + "\n".join(progress_lines))
+
+                        if node == "planning_node":
+                            plan = payload_data.get("plan", [])
+                            if plan:
+                                progress_lines.append("**Plan**")
+                                progress_lines.extend([f"- {step}" for step in plan])
+                                progress_placeholder.markdown("**Progress**\n" + "\n".join(progress_lines))
+
+                        if node == "plan_executor_node":
+                            for message in payload_data.get("messages", []):
+                                content = extract_message_text(message)
+                                if content.startswith("🔄 开始执行步骤"):
+                                    progress_lines.append(f"- {content}")
+                                elif content.startswith("✅ 步骤"):
+                                    progress_lines.append(f"- {content}")
+
+                            step_results = payload_data.get("step_results") or []
+                            if step_results:
+                                step_result = step_results[-1]
+                                progress_lines.append(
+                                    f"- Step {step_result['step_index'] + 1} {step_result['status']}: {step_result['step_description']}"
+                                )
+                            progress_placeholder.markdown("**Progress**\n" + "\n".join(progress_lines))
+                    elif event_type == "messages":
+                        metadata = data.get("metadata", {})
+                        if metadata.get("langgraph_node") != "response_generator":
+                            continue
+
+                        message = data.get("message", {})
+                        chunk_text = extract_message_text(message)
+                        if chunk_text:
+                            answer_text += chunk_text
+                            message_placeholder.markdown(answer_text or "Thinking...")
+                    elif event_type == "clarification":
+                        final_result = {
+                            "status": "need_clarification",
+                            "response": data.get("question", ""),
+                        }
+                    elif event_type == "final":
+                        final_result = data
+                    elif event_type == "error":
+                        raise RuntimeError(data.get("message", "Unknown stream error"))
+
+            if not final_result:
+                final_result = {"response": answer_text, "status": "success"}
+
+            if final_result.get("status") == "need_clarification":
                 st.session_state.waiting_for_clarification = True
-                reply_text = f"**[需要澄清]** {result.response}"
             else:
                 st.session_state.waiting_for_clarification = False
-                reply_parts = []
-                
-                if result.response:
-                    reply_parts.append(f"{result.response}")
-                
-                if result.faq_response:
-                    reply_parts.append(f"**FAQ Answer:**\n{result.faq_response}")
-                
-                if result.plan:
-                    plan_str = "\n".join([f"- {step}" for step in result.plan])
-                    reply_parts.append(f"**Plan:**\n{plan_str}")
-                
-                if result.intent:
-                    reply_parts.append(f"**Intent:** `{result.intent}`")
-                
-                # ⭐ 显示执行统计
-                if result.execution_summary:
-                    summary = result.execution_summary
-                    stats_parts = []
-                    if "total_duration_ms" in summary and summary["total_duration_ms"] is not None:
-                         stats_parts.append(f"⏱️ {summary['total_duration_ms']:.0f}ms")
-                    
-                    if "token_usage" in summary and summary["token_usage"]:
-                        usage = summary["token_usage"]
-                        stats_parts.append(f"🪙 {usage.get('total_tokens', 0)} (In: {usage.get('prompt_tokens', 0)}, Out: {usage.get('completion_tokens', 0)})")
-                    
-                    if stats_parts:
-                        reply_parts.append(" | ".join(stats_parts))
-                
-                if not reply_parts:
-                    reply_text = f"Result: {result.json()}"
-                else:
-                    reply_text = "\n\n---\n\n".join(reply_parts)
-            
+
+            reply_text = format_reply_text(final_result)
             message_placeholder.markdown(reply_text)
+            progress_placeholder.empty()
             st.session_state.messages.append({"role": "assistant", "content": reply_text})
             
         except Exception as e:
