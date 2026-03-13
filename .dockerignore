@@ -1,0 +1,16 @@
+.git
+.gitignore
+.pytest_cache
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.DS_Store
+.env1
+.streamlit
+node_modules
+dist
+build
+htmlcov
+.coverage

@@ -3,7 +3,7 @@ import pymysql
 from pymysql.cursors import DictCursor
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
+# Load environment variables from .env1 file
 load_dotenv()
 
 # Default configuration
