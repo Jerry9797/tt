@@ -9,9 +9,16 @@
 
 云端部署说明见 [DEPLOY.md](DEPLOY.md)。
 
-如果要在一台机器上用 Docker 同时启动 API、MySQL、Redis、Qdrant，可直接执行：
+如果 MySQL、Redis、Qdrant 已经单独部署好了，只启动 API：
 
 ```bash
-cp .env1.example .env1
+cp .env_copy.example .env_copy
+docker compose -f deploy/docker-compose.yml up -d --build
+```
+
+如果要在一台机器上用 Docker 同时启动 API、MySQL、Redis、Qdrant：
+
+```bash
+cp .env_copy.example .env_copy
 docker compose -f deploy/docker-compose.stack.yml up -d --build
 ```

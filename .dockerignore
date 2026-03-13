@@ -7,7 +7,8 @@ __pycache__
 *.pyo
 *.pyd
 .DS_Store
-.env1
+.env_copy
+../fk_job/.env_ccc
 .streamlit
 node_modules
 dist

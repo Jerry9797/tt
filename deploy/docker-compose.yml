@@ -8,7 +8,9 @@ services:
     image: tt-assistant-api:latest
     restart: unless-stopped
     env_file:
-      - ../.env1
+      - ../.env_copy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "127.0.0.1:8000:8000"
     healthcheck:

@@ -2,4 +2,5 @@ __pycache__/
 *.pyc
 .idea
 *.xml
-.env1
+../fk_job/.env_ccc
+.env_copy

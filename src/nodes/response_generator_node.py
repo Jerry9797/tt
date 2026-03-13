@@ -12,7 +12,7 @@ from typing import AsyncIterator
 from langchain_core.messages import AIMessage
 from langchain_core.prompts import ChatPromptTemplate
 
-from src.config.llm import get_q_plus
+from src.config.llm import get_claude_model, get_gpt_model
 from src.graph_state import AgentState
 from src.prompt.prompt_loader import get_prompt
 
@@ -39,7 +39,8 @@ async def response_generator_node(state: AgentState) -> dict:
         get_prompt("response_generation")
     )
     
-    chain = response_prompt | get_q_plus(streaming=True)
+    # chain = response_prompt | get_claude_model(model="claude-haiku-4-5",streaming=True)
+    chain = response_prompt | get_gpt_model(model="gpt-4.1",streaming=True)
     result = await chain.ainvoke(payload)
     
     final_response = result.content

@@ -7,6 +7,8 @@
 - MySQL、Redis 使用托管实例。
 - Nginx 负责 HTTPS 和反向代理。
 
+如果你已经在同一台机器上单独部署好了 MySQL、Redis、Qdrant，推荐使用 [`deploy/docker-compose.yml`](deploy/docker-compose.yml)。这个文件默认让 API 容器通过 `host.docker.internal` 连接宿主机已映射的端口。
+
 如果你准备把 API、MySQL、Redis、Qdrant 一起部署到同一台机器的 Docker 中，也可以直接使用 [`deploy/docker-compose.stack.yml`](deploy/docker-compose.stack.yml)。
 
 ## 1. 部署前准备
@@ -19,6 +21,16 @@
 - 1 个可用的 Qdrant 服务地址；如果不启用 FAQ 检索，也建议配置连通性，避免线上行为和本地偏差过大。
 
 将本地 `.env` 按照 [`.env.example`](.env.example) 的键名整理为生产环境变量，不要上传真实密钥到代码仓库。
+
+如果你的云主机无法访问或解析仓库中默认使用的内部模型网关，请在 `.env` 中显式设置可公网访问的 OpenAI 兼容网关：
+
+```dotenv
+OPENAI_COMPAT_API_KEY=your_api_key
+OPENAI_COMPAT_BASE_URL=https://your-openai-compatible-endpoint/v1
+OPENAI_COMPAT_MODEL=gpt-4.1
+```
+
+代码会优先使用这组变量；未设置时才退回当前默认值。
 
 ## 2. 安装运行时
 
@@ -33,21 +45,31 @@
 将仓库拉到服务器后，在项目根目录执行：
 
 ```bash
-cp .env1.example .env1
-vim .env1
+cp .env_copy.example .env_copy
+vim .env_copy
 docker compose -f deploy/docker-compose.yml build
 docker compose -f deploy/docker-compose.yml up -d
 ```
 
+这个模式用于“数据库和向量库已经在宿主机 Docker 中运行，并且端口已映射到宿主机”的场景。默认建议：
+
+```dotenv
+MYSQL_HOST=host.docker.internal
+REDIS_HOST=host.docker.internal
+QDRANT_HOST=host.docker.internal
+```
+
+不要改成 `127.0.0.1`。因为 API 运行在容器内时，`127.0.0.1` 指向的是 API 容器自己，不是宿主机。
+
 如果你要在同一台机器上把 API、MySQL、Redis、Qdrant 一起拉起：
 
 ```bash
-cp .env1.example .env1
-vim .env1
+cp .env_copy.example .env_copy
+vim .env_copy
 docker compose -f deploy/docker-compose.stack.yml up -d --build
 ```
 
-这种模式下，`.env` 里应该保留容器服务名：
+这种模式下，`.env` 里应该把主机名改成容器服务名：
 
 ```dotenv
 MYSQL_HOST=mysql
@@ -55,7 +77,7 @@ REDIS_HOST=redis
 QDRANT_HOST=qdrant
 ```
 
-不要改成 `127.0.0.1`。因为 API 运行在容器内时，`127.0.0.1` 指向的是 API 容器自己，不是 MySQL、Redis 或 Qdrant 容器。
+不要保留 `host.docker.internal`。因为这时 API 和中间件都在同一个 Compose 网络里，直接用服务名最稳。
 
 确认应用启动成功：
 
@@ -110,3 +132,4 @@ curl -N -X POST https://your-domain.example/chat/stream \
 - 先用 `/health` 做存活检查；如果后续需要更强校验，再增加数据库和 Redis 连通性检查。
 - 如果要迁移 Qdrant，请只修改环境变量 `QDRANT_HOST`、`QDRANT_PORT`、`QDRANT_API_KEY`、`QDRANT_HTTPS`，不要改代码。
 - 如果 API 和中间件都在 Compose 里，优先使用服务名互联，不要使用 `127.0.0.1`。
+- 如果 API 单独在 Compose 里，而 MySQL、Redis、Qdrant 是宿主机上已存在的容器，优先使用 `host.docker.internal`，不要使用 `127.0.0.1`。

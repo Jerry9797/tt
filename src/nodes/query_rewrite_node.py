@@ -2,7 +2,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.runnables import Runnable
 
-from src.config.llm import q_plus
+from src.config.llm import get_gpt_model
 from src.graph_state import AgentState
 from src.prompt.prompt_loader import get_prompt
 
@@ -28,7 +28,7 @@ async def query_rewrite_node(state: AgentState):
 
     chain : Runnable = (
             query_rewrite_prompt
-            | q_plus
+            | get_gpt_model("gpt-4.1-mini")
             | JsonOutputParser()
     )
 

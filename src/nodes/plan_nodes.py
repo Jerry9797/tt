@@ -8,7 +8,7 @@ from langchain_core.prompts import PromptTemplate, ChatPromptTemplate
 from datetime import datetime
 import time
 
-from src.config.llm import q_max, get_gpt_model, mt_llm, q_plus, get_claude_model
+from src.config.llm import get_gpt_model
 from src.graph_state import AgentState, Plan
 from src.tools import (
     ALL_TOOLS,
@@ -32,7 +32,7 @@ async def planning_node(state: AgentState):
     """生成执行计划 - 根据intent动态选择prompt"""
     from langchain_core.messages import AIMessage
     from src.config.sop_loader import get_sop_loader
-    
+
     rewritten_query = state['rewritten_query']
     intent = state.get('intent', 'default')
     
@@ -141,7 +141,7 @@ async def plan_executor_node(state: AgentState):
     agent = create_agent(
         system_prompt=system_prompt,
         # 本地环境的 openai-proxy token 已失效，执行节点优先走已验证可用的通义模型。
-        model=q_plus,
+        model=get_gpt_model(),
         tools=all_tools,  # ⭐ 使用合并后的工具列表
     )
     
@@ -474,7 +474,7 @@ async def replan_node(state: AgentState) -> dict:
     ]
     
     try:
-        result = await q_max.ainvoke(messages)
+        result = await get_gpt_model().ainvoke(messages)
         
         # 解析LLM响应
         import json
