@@ -8,12 +8,9 @@ project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_root))
 
 from src.config.eb import TongyiEmbedding
+from src.config.qdrant import get_qdrant_client_kwargs
 
-client = QdrantClient(
-    host="23.91.97.241",   # 推荐用 host + port 而非 url（更清晰）
-    port=6333,
-    # api_key="your_api_key_here"
-)
+client = QdrantClient(**get_qdrant_client_kwargs())
 
 collection_name = "dz_channel_faq"
 vector_size = 1536  # 确保与 TongyiEmbedding 输出维度一致

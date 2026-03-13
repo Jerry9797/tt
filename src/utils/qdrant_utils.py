@@ -1,17 +1,14 @@
-import os
 from typing import List
 from qdrant_client import QdrantClient
 from qdrant_client.models import PointStruct
 from dotenv import load_dotenv
 
 from src.config.eb import TongyiEmbedding
+from src.config.qdrant import get_qdrant_client_kwargs
 
 load_dotenv()
 
-client = QdrantClient(
-    host=os.getenv("QDRANT_HOST", "23.91.97.241"),
-    port=int(os.getenv("QDRANT_PORT", 6333)),
-)
+client = QdrantClient(**get_qdrant_client_kwargs())
 eb = TongyiEmbedding()
 
 def qdrant_select(query: str,score_threshold : float = 0.75, collection_name: str = "dz_channel_faq"):

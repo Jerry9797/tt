@@ -2,6 +2,9 @@ import os
 
 from langchain_community.embeddings import DashScopeEmbeddings,zhipuai
 from dotenv import load_dotenv
+from langchain_qdrant import QdrantVectorStore
+
+from src.config.qdrant import get_qdrant_url
 
 load_dotenv()
 
@@ -13,6 +16,9 @@ def TongyiEmbedding()->DashScopeEmbeddings:
     return DashScopeEmbeddings(dashscope_api_key=api_key,
                            model="text-embedding-v1")
 
-from langchain_qdrant import QdrantVectorStore
 def QdrantVecStore(eb:DashScopeEmbeddings,collection_name:str):
-    return QdrantVectorStore.from_existing_collection(embedding=eb, url="http://23.91.97.241:6333", collection_name=collection_name)
+    return QdrantVectorStore.from_existing_collection(
+        embedding=eb,
+        url=get_qdrant_url(),
+        collection_name=collection_name,
+    )
