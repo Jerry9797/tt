@@ -30,6 +30,13 @@ from .code_analysis_tool import (
     analyze_java_code,
 )
 
+# 补充诊断工具
+from .diagnostic_tools import (
+    query_request_related_assets,
+    query_merchant_exposure,
+    query_rule_engine_config,
+)
+
 # ⭐ 用户日志工具（新增）
 from .user_log_tool import (
     search_user_access_history,
@@ -44,6 +51,7 @@ ALL_TOOLS = (
     [check_sensitive_merchant, check_low_star_merchant] +
     TRACE_ALL_TOOLS +
     [analyze_java_code] +
+    [query_request_related_assets, query_merchant_exposure, query_rule_engine_config] +
     USER_LOG_TOOLS  # ⭐ 添加用户日志工具组
 )
 
@@ -63,6 +71,11 @@ __all__ = [
     
     # 代码分析工具
     'analyze_java_code',
+
+    # 补充诊断工具
+    'query_request_related_assets',
+    'query_merchant_exposure',
+    'query_rule_engine_config',
     
     # ⭐ 用户日志工具
     'search_user_access_history',

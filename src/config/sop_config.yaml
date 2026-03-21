@@ -10,8 +10,7 @@ shop_them_no_call:
   description: "商户在推荐列表中没有被召回的问题诊断流程"
   category: "召回问题"
   owner: "推荐算法组"
-  
-  # 固定步骤
+
   steps:
     - "检查用户问题是否提供：商户ID和平台信息（美团/点评）；没有则询问用户。"
     - "使用check_low_star_merchant检查商户是否为零星商户（shop_star=0）"
@@ -19,39 +18,34 @@ shop_them_no_call:
     - "使用check_sensitive_merchant检查商户是否为软色情违规商户（risk_score>0.5或risk_score_v2=1）"
     - "如果是软色情违规商户，告知用户该商户因违规内容被过滤"
     - "使用select_shop_state，查询访问商户时该商户是否正在营业"
-  
-  # 需要的工具
+
   tools:
     - check_low_star_merchant
     - check_sensitive_merchant
-    - 使用select_shop_state
+    - select_shop_state
 
-  # Planning Prompt
   planning_prompt: |
-    
     # 用户问题
     {query}
-    
+
     # 专业知识
     ## 常见未召回原因（优先级排序）
     1. **零星商户卡控** (最常见，约40%)
        - shop_star=0 的商户会被系统过滤
        - 工具: check_low_star_merchant
-    
+
     2. **软色情违规** (约40%)
        - risk_score>0.5 或 risk_score_v2=1
        - 工具: check_sensitive_merchant
-    
+
     3. **营业状态异常** (约10%)
        - 不在营业时间
        - 工具: select_shop_state
 
-    
     # 输出要求
     生成诊断步骤，每步明确"做什么"和"为什么"。
 #    {format_instructions}
 
-  # 指标
   metrics:
     success_rate: 0.85
     avg_steps: 4
@@ -67,7 +61,7 @@ display_field_missing:
   description: "商户反馈某些展示字段（如距离、评分等）不展示"
   category: "展示问题"
   owner: "前端展示组"
-  
+
   steps:
     - "确认用户反馈的缺失字段名称"
     - "如果是距离缺失，优先检查入参是否缺少经纬度参数"
@@ -79,81 +73,286 @@ display_field_missing:
     - "根据OPT类名查询get_qpro_config_by_class_name获取该类对应的配置内容"
     - "判断代码逻辑是否存在BUG"
     - "判断实验，如果是实验导致，告知实验名称、负责人和预期时间；否则检查Fetcher逻辑"
-  
+
   tools:
     - get_visit_record_by_userid
     - get_trace_context
     - get_qpro_by_scene_code
     - get_code_by_class_name
     - get_qpro_config_by_class_name
-#    - get_plan_id_by_scene_code
-#    - get_document_fetcher_config
-#    - get_experiment_detail
-  
+
   planning_prompt: |
     # 角色定义
     你是【展示字段缺失诊断专家】，擅长基于TraceID排查AB实验导致的展示问题。
-    
+
     # 用户问题
     {query}
-    
+
     # ⚠️ 关键前提：所有信息都依赖TraceID
-    
+
     ## 信息获取流程
-    ```
     用户输入(userId+时间) → TraceID → 链路上下文(sceneCode/expId/参数)
-    ```
-    
-    **没有TraceID就无法排查**，这是第一优先级！
-    
+
+    **没有TraceID就无法排查**，这是第一优先级。
+
     ## 标准排查流程
-    
-    ### Step 1: 获取TraceID（核心）
-    **必须信息**：
-    - userId（必须）
-    - 访问时间（必须，至少精确到小时）
-    
-    **工具**: `get_visit_record_by_userid(user_id, start_time)`
-    **获取**: trace_id
-    
-    ⚠️ 如果用户没提供时间，必须先询问！
-    
-    ### Step 2: 提取链路上下文
-    **工具**: `get_trace_context(trace_id)`
-    **获取**：
-    - scene_code（场景编码）
-    - experiments（命中的所有实验）
-    - fetcher_results（各字段的实际值）
-    
-    ### Step 3: 查询实验配置
-    **工具**: `get_experiment_detail(exp_id)`
-    **获取**: 各分组（A/B/C）的具体配置
-    
+    1. 获取TraceID：用户必须提供 userId 和访问时间。
+    2. 提取链路上下文：通过 get_trace_context 获取 scene_code、experiments、fetcher_results。
+    3. 查询实验配置：必要时通过 exp_id 继续定位分组配置。
+
     ## 诊断要点
-    ✅ **60%是AB实验**：优先看trace中的experiments字段
-    ✅ **trace是唯一真相源**：所有上下文信息都从trace获取
-    ✅ **不要猜测**：没有trace_id就无法继续
-    
+    - 优先检查 trace 中的 experiments 字段
+    - 所有上下文信息都以 trace 为准
+    - 没有 trace_id 时不要继续猜测
+
     # 输出格式
     {format_instructions}
-  
+
   metrics:
     success_rate: 0.78
     avg_steps: 6
     avg_duration_ms: 8000
 
 
-restore_user_scene:
-  name: "还原用户现场"
-  description: "根据用户ID和访问时间，输出该用户在该时间范围内的访问记录"
-  category: "用户访问记录"
+# ============================================================================
+# 资产查询
+# ============================================================================
+
+asset_query:
+  name: "资产查询"
+  description: "查询某个请求涉及到的类资产、配置资产和依赖关系"
+  category: "资产排查"
+  owner: "基础诊断组"
 
   steps:
-    - "1"
-    - "2"
-    - "3"
+    - "确认用户是否提供了trace_id；如果没有，则要求补充trace_id，或提供userId、时间、平台后先查访问记录。"
+    - "使用get_trace_context获取请求的链路上下文，提取scene_code、request_params、document、fetcher和experiment信息。"
+    - "使用get_plan_id_by_scene_code获取该场景对应的plan配置。"
+    - "使用get_document_fetcher_config梳理当前请求涉及的document、fetcher和字段配置。"
+    - "使用query_request_related_assets补充该请求涉及到的类资产、配置资产和实验资产。"
+    - "输出清晰的资产清单，说明每类资产的作用、依赖关系和定位依据。"
 
-  tools: []
+  tools:
+    - get_trace_context
+    - get_plan_id_by_scene_code
+    - get_document_fetcher_config
+    - query_request_related_assets
 
   planning_prompt: |
-    test
+    你是【请求资产排查专家】。
+
+    # 用户问题
+    {query}
+
+    # 目标
+    识别某个请求涉及到的类资产、配置资产和实验资产，并给出依赖关系。
+
+    # 处理原则
+    - 优先使用 trace 还原上下文，不要脱离 trace 猜测。
+    - “类资产”至少包括 document、fetcher、规则类、关键代码类。
+    - “配置资产”至少包括 plan、fetcher 配置、实验配置、规则配置。
+    - 如果缺少 trace_id，必须先让用户补充，或建议提供 userId+时间用于进一步查询。
+
+    # 输出要求
+    - 明确列出资产名称、资产类型、来源依据。
+    - 说明资产之间的依赖关系。
+    - 区分“已确认资产”和“待补信息后才能确认的资产”。
+
+    # 输出格式
+    {format_instructions}
+
+  metrics:
+    success_rate: 0.72
+    avg_steps: 5
+    avg_duration_ms: 6000
+
+
+# ============================================================================
+# 查询访问记录
+# ============================================================================
+
+access_record_query:
+  name: "查询访问记录"
+  description: "查询用户在指定时间范围内的访问记录和可用trace"
+  category: "用户访问记录"
+  owner: "基础诊断组"
+
+  steps:
+    - "确认用户是否提供了userId和时间范围；如果没有，则优先补齐这两个信息。"
+    - "当用户时间是自然语言描述时，优先使用parse_user_time_description标准化时间。"
+    - "必要时使用parse_user_query_params从用户问题中提取userId和时间范围。"
+    - "使用search_user_access_history查询访问记录，输出trace_id、访问时间、scene_code和还原链接。"
+    - "如果返回多条记录，按时间和scene_code帮助用户缩小范围。"
+
+  tools:
+    - parse_user_query_params
+    - parse_user_time_description
+    - search_user_access_history
+
+  planning_prompt: |
+    你是【访问记录查询助手】。
+
+    # 用户问题
+    {query}
+
+    # 目标
+    帮用户定位指定时间范围内的访问记录，并找出后续排查可用的 trace_id。
+
+    # 处理原则
+    - 缺少 userId 或时间范围时，必须先补信息。
+    - 如果时间表达模糊，先标准化再查询。
+    - 返回结果时优先保留 trace_id、访问时间、scene_code 和还原链接。
+    - 不要直接进入现场还原，除非用户明确要求。
+
+    # 输出格式
+    {format_instructions}
+
+  metrics:
+    success_rate: 0.83
+    avg_steps: 4
+    avg_duration_ms: 4000
+
+
+# ============================================================================
+# 还原用户现场
+# ============================================================================
+
+restore_user_scene:
+  name: "还原用户现场"
+  description: "根据trace_id还原用户当时看到的页面内容、商户列表和点击行为"
+  category: "用户访问记录"
+  owner: "基础诊断组"
+
+  steps:
+    - "确认用户是否提供了trace_id；如果没有，则要求提供userId和时间范围后先查访问记录。"
+    - "如果缺少trace_id，使用search_user_access_history定位可用的访问记录和trace_id。"
+    - "使用restore_user_scene还原现场，获取页面信息、商户列表和点击记录。"
+    - "结合还原结果，总结用户实际看到的内容、操作路径和关键上下文。"
+    - "如果还原结果为空或trace不存在，明确告知缺失原因并提示用户补充更精确的时间范围。"
+
+  tools:
+    - search_user_access_history
+    - restore_user_scene
+
+  planning_prompt: |
+    你是【用户现场还原专家】。
+
+    # 用户问题
+    {query}
+
+    # 目标
+    根据 trace_id 还原用户当时的页面、展示商户和点击行为。
+
+    # 处理原则
+    - trace_id 是最优先的输入；没有 trace_id 时，先查访问记录。
+    - 还原结果必须覆盖页面信息、展示内容和点击记录。
+    - 如果存在多条候选记录，先帮助用户确认正确的 trace，再继续还原。
+
+    # 输出要求
+    - 明确说明还原依据的 trace_id。
+    - 汇总页面、展示商户、点击行为。
+    - 标注缺失信息和不确定点。
+
+    # 输出格式
+    {format_instructions}
+
+  metrics:
+    success_rate: 0.81
+    avg_steps: 4
+    avg_duration_ms: 4500
+
+
+# ============================================================================
+# 商户曝光量查询
+# ============================================================================
+
+merchant_exposure_query:
+  name: "商户曝光量查询"
+  description: "查询指定商户在给定时间范围内的曝光量和统计口径"
+  category: "流量查询"
+  owner: "基础诊断组"
+
+  steps:
+    - "确认用户是否提供了商户ID、平台、时间范围和曝光统计口径；缺少任何一项都先补充。"
+    - "如果时间表达模糊，先与用户确认精确时间范围。"
+    - "使用query_merchant_exposure查询该商户在指定时间范围内的曝光数据。"
+    - "输出曝光量、统计口径、时间范围和平台信息。"
+    - "如果查询结果为空，明确提示用户检查口径、平台或时间范围是否正确。"
+
+  tools:
+    - query_merchant_exposure
+
+  planning_prompt: |
+    你是【商户曝光量查询助手】。
+
+    # 用户问题
+    {query}
+
+    # 目标
+    查询指定商户在指定时间范围内的曝光量，并说明统计口径。
+
+    # 处理原则
+    - 商户ID、平台、时间范围、统计口径缺一不可。
+    - 没有确认口径时，不要直接查询。
+    - 返回结果时必须同时说明查询时间范围和口径，避免误读。
+
+    # 输出格式
+    {format_instructions}
+
+  metrics:
+    success_rate: 0.68
+    avg_steps: 3
+    avg_duration_ms: 3000
+
+
+# ============================================================================
+# 产品规则问题
+# ============================================================================
+
+product_rule_issue:
+  name: "产品规则问题"
+  description: "排查规则引擎配置或应用逻辑导致的产品规则问题"
+  category: "规则排查"
+  owner: "基础诊断组"
+
+  steps:
+    - "确认用户是否提供了trace_id或scene_code；如果没有，则要求补充trace_id，或提供userId和时间后进一步定位。"
+    - "使用get_trace_context提取scene_code、request_params、experiments和命中的链路上下文。"
+    - "使用get_plan_id_by_scene_code和get_document_fetcher_config梳理当前场景的配置结构。"
+    - "使用query_rule_engine_config查询规则引擎配置、规则开关和命中条件。"
+    - "如果怀疑是代码应用逻辑问题，再使用analyze_java_code分析关键类实现。"
+    - "输出结论时区分：配置问题、规则未命中、代码应用问题、信息不足。"
+
+  tools:
+    - get_trace_context
+    - get_plan_id_by_scene_code
+    - get_document_fetcher_config
+    - query_rule_engine_config
+    - analyze_java_code
+
+  planning_prompt: |
+    你是【产品规则排查专家】。
+
+    # 用户问题
+    {query}
+
+    # 目标
+    判断问题是由规则引擎配置、实验配置、开关条件还是代码应用逻辑引起。
+
+    # 处理原则
+    - 默认按“配置优先、代码兜底”排查。
+    - 没有 trace_id 或 scene_code 时，不要直接下结论。
+    - 先确认规则是否存在、是否命中、是否被实验或开关覆盖，再考虑代码实现。
+
+    # 输出要求
+    - 明确写出排查依据。
+    - 明确区分配置问题、规则未命中、代码问题和待补信息。
+    - 如果需要代码分析，指出要分析的类和字段。
+
+    # 输出格式
+    {format_instructions}
+
+  metrics:
+    success_rate: 0.74
+    avg_steps: 5
+    avg_duration_ms: 6500
