@@ -1,9 +1,11 @@
 import json
+import logging
 import sys
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any, AsyncIterator, Dict, List, Optional
+from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
@@ -24,13 +26,14 @@ app = FastAPI(
     description="TT Assistant API",
     version="v0.1",
 )
+logger = logging.getLogger(__name__)
 
 
 class ChatRequest(BaseModel):
     query: Optional[str] = None
     thread_id: Optional[str] = None
     resume_input: Optional[str] = None
-    history: Optional[List[dict]] = []
+    history: Optional[List[dict]] = Field(default_factory=list)
 
 
 class StepResultResponse(BaseModel):
@@ -42,7 +45,7 @@ class StepResultResponse(BaseModel):
     duration_ms: Optional[float] = None
     output: Optional[str] = None
     error: Optional[str] = None
-    tool_calls: List[Dict[str, Any]] = []
+    tool_calls: List[Dict[str, Any]] = Field(default_factory=list)
     token_usage: Optional[Dict[str, int]] = None
 
 
@@ -71,11 +74,12 @@ class StreamEventResponse(BaseModel):
 
 
 def build_initial_state(request: ChatRequest) -> AgentState:
+    # 这里构造的是“最小可运行状态”：
+    # 只放图入口一定会用到的字段，其余字段交给节点按需补齐。
     initial_state = AgentState()
-    initial_state["original_query"] = request.query
+    initial_state["original_query"] = request.query or ""
     initial_state["plan"] = []
     initial_state["current_step"] = 0
-    initial_state["past_steps"] = []
 
     messages = []
     for msg in request.history or []:
@@ -85,6 +89,10 @@ def build_initial_state(request: ChatRequest) -> AgentState:
             messages.append(AIMessage(content=msg.get("content")))
     initial_state["messages"] = messages
     return initial_state
+
+
+def resolve_thread_id(thread_id: Optional[str]) -> str:
+    return thread_id or f"thread_{uuid4().hex}"
 
 
 def serialize_step_results(step_results: Optional[List[Any]]) -> Optional[List[StepResultResponse]]:
@@ -101,7 +109,7 @@ def serialize_step_results(step_results: Optional[List[Any]]) -> Optional[List[S
             duration_ms=result.duration_ms,
             output=result.output_result,
             error=result.error_message,
-            tool_calls=[],
+            tool_calls=[tool_call.model_dump() for tool_call in getattr(result, "tool_calls", [])],
             token_usage=result.token_usage.dict() if result.token_usage else None,
         )
         for result in step_results
@@ -129,13 +137,21 @@ def serialize_execution_summary(summary: Any) -> Optional[Dict[str, Any]]:
 
 
 def build_chat_response(result: Dict[str, Any], request: ChatRequest, thread_id: str, status: str = "success") -> ChatResponse:
+    # 对外 API 继续保留 `response` 字段，但内部状态已经拆成：
+    # - `final_response`：真正的最终答案
+    # - `clarification_question`：需要用户补充时的问题
+    # 这里负责做兼容映射，避免前端/UI 需要跟着内部重构一起改。
+    response_text = result.get("final_response") or result.get("response")
+    if status == "need_clarification":
+        response_text = result.get("clarification_question") or result.get("response")
+
     return ChatResponse(
         query=result.get("original_query", request.query),
         intent=result.get("intent"),
         faq_response=result.get("faq_response"),
         plan=result.get("plan"),
-        response=result.get("response"),
-        thread_id=thread_id,
+        response=response_text,
+        thread_id=result.get("thread_id", thread_id),
         status=status,
         step_results=serialize_step_results(result.get("step_results")),
         execution_summary=serialize_execution_summary(result.get("execution_summary")),
@@ -157,41 +173,46 @@ def extract_interrupt_question(state_snapshot: Any) -> Optional[str]:
 
 def build_graph_input(request: ChatRequest) -> AgentState | Command:
     if request.resume_input:
-        print(f"中断恢复: {request.resume_input}")
+        logger.info("Resuming interrupted graph execution")
+        # LangGraph 的 resume 机制会把这段字符串送回上次 interrupt 的位置，
+        # 再由 ask_human 节点写入 `resume_input`，交给目标节点消费。
         return Command(resume=request.resume_input)
 
-    print("TT running...")
     return build_initial_state(request)
 
 
-async def execute_chat_request(request: ChatRequest) -> tuple[Dict[str, Any], str]:
+async def execute_chat_request(request: ChatRequest) -> tuple[Dict[str, Any], str, str]:
     graph = None
+    thread_id = resolve_thread_id(request.thread_id)
     try:
         graph = await build_graph(init_mcp=False)
-        thread_id = request.thread_id or "default_thread"
         config = {"configurable": {"thread_id": thread_id}}
         result = {}
 
         try:
             result = await graph.ainvoke(build_graph_input(request), config=config)
         except GraphInterrupt:
-            print("Graph execution interrupted.")
+            logger.info("Graph execution interrupted for thread_id=%s", thread_id)
 
         state_snapshot = await graph.aget_state(config)
         question = extract_interrupt_question(state_snapshot)
         if question:
             return (
                 {
-                    "response": question,
+                    # 内部状态已经不再复用 `response` 表示澄清问题；
+                    # 这里先返回语义化字段，再由 build_chat_response 做 API 兼容映射。
+                    "clarification_question": question,
                     "thread_id": thread_id,
                 },
                 "need_clarification",
+                thread_id,
             )
 
         if result is None:
             result = state_snapshot.values or {}
 
-        return result, "success"
+        result["thread_id"] = thread_id
+        return result, "success", thread_id
     finally:
         await cleanup_runtime(graph)
 
@@ -202,13 +223,13 @@ async def cleanup_runtime(graph: Any) -> None:
 
         await cleanup_mcp_manager()
     except Exception as exc:
-        print(f"Error cleaning MCP manager: {exc}")
+        logger.warning("Error cleaning MCP manager: %s", exc)
 
     if graph and hasattr(graph.checkpointer, "conn"):
         try:
             graph.checkpointer.conn.close()
         except Exception as exc:
-            print(f"Error closing DB connection: {exc}")
+            logger.warning("Error closing DB connection: %s", exc)
 
 
 def encode_sse(event: str, data: Dict[str, Any]) -> str:
@@ -311,19 +332,17 @@ async def emit_graph_stream(
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     try:
-        result, status = await execute_chat_request(request)
+        result, status, thread_id = await execute_chat_request(request)
         return build_chat_response(
             result=result,
             request=request,
-            thread_id=request.thread_id or "default_thread",
+            thread_id=thread_id,
             status=status,
         )
     except HTTPException:
         raise
     except Exception as exc:
-        import traceback
-
-        traceback.print_exc()
+        logger.exception("Chat request failed")
         raise HTTPException(status_code=500, detail=str(exc))
 
 
@@ -331,7 +350,7 @@ async def chat(request: ChatRequest):
 async def chat_stream(request: ChatRequest):
     async def event_generator() -> AsyncIterator[str]:
         graph = None
-        thread_id = request.thread_id or "default_thread"
+        thread_id = resolve_thread_id(request.thread_id)
         config = {"configurable": {"thread_id": thread_id}}
 
         try:
@@ -349,7 +368,7 @@ async def chat_stream(request: ChatRequest):
                 async for event in emit_graph_stream(graph, build_graph_input(request), config):
                     yield event
             except GraphInterrupt:
-                print("Graph stream interrupted.")
+                logger.info("Graph stream interrupted for thread_id=%s", thread_id)
 
             state_snapshot = await graph.aget_state(config)
             question = extract_interrupt_question(state_snapshot)
@@ -375,9 +394,7 @@ async def chat_stream(request: ChatRequest):
                 },
             )
         except Exception as exc:
-            import traceback
-
-            traceback.print_exc()
+            logger.exception("Chat stream failed for thread_id=%s", thread_id)
             yield encode_sse(
                 "error",
                 {
@@ -411,7 +428,7 @@ async def get_execution_history(thread_id: str):
         state = state_snapshot.values
         return {
             "thread_id": thread_id,
-            "query": state.get("query"),
+            "query": state.get("original_query"),
             "plan": state.get("plan"),
             "step_results": [
                 item.model_dump()
@@ -422,9 +439,7 @@ async def get_execution_history(thread_id: str):
     except HTTPException:
         raise
     except Exception as exc:
-        import traceback
-
-        traceback.print_exc()
+        logger.exception("Get execution history failed for thread_id=%s", thread_id)
         raise HTTPException(status_code=500, detail=str(exc))
     finally:
         await cleanup_runtime(graph)

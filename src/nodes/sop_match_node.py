@@ -1,4 +1,5 @@
 import json
+import logging
 
 from langchain_core.messages import SystemMessage, HumanMessage
 
@@ -9,6 +10,7 @@ from src.config.sop_loader import get_sop_loader
 # ⭐ 使用SOPLoader加载配置
 sop_loader = get_sop_loader()
 intent_dict = sop_loader.get_intent_dict()
+logger = logging.getLogger(__name__)
 
 async def sop_match_node(state: AgentState):
     """意图识别，是否命中SOP"""
@@ -56,28 +58,21 @@ async def sop_match_node(state: AgentState):
     response = await get_gpt_model("gpt-4o-mini").ainvoke(messages)
     intent = response.content.strip()
     
-    print(f"[SOP Match] Query: {rewritten_query[:50]}")
-    print(f"[SOP Match] Identified intent: {intent}")
-    
     if intent and intent in intent_dict:
         # ⭐ 从loader获取SOP配置
         sop_config = sop_loader.get_sop(intent)
         plan = sop_config.steps if sop_config else []
         
-        print(f"[SOP Match] Matched SOP: {sop_config.name if sop_config else 'Unknown'}")
-        print(f"[SOP Match] Steps count: {len(plan)}")
+        logger.info("Matched SOP intent=%s steps=%s", intent, len(plan))
         
         return {
             "intent": intent, 
-            "is_sop_matched": True,
             "plan": plan,
             "current_step": 0
         }
     
     # ⭐ 未匹配也返回intent
-    print(f"[SOP Match] No SOP matched, using default")
+    logger.info("No SOP matched, fallback to default intent")
     return {
-        "is_sop_matched": False,
         "intent": "other"
     }
-

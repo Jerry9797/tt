@@ -1,37 +1,46 @@
+import logging
+
 from langgraph.types import Command, interrupt
 from src.graph_state import AgentState
+
+logger = logging.getLogger(__name__)
+
 
 async def ask_human(state: AgentState):
     from langchain_core.messages import AIMessage, HumanMessage
 
-    # ⭐ 获取中断上下文
-    return_to = state.get("return_to", {})
-    question = state.get("response")
-    source_node = "query_rewrite_node"
+    # `ask_human` 是所有澄清流程的统一挂起点。
+    # 它本身不关心为什么要问，只关心：
+    # 1. 问什么（clarification_question）
+    # 2. 问完之后回到哪里（resume_target）
+    return_to = state.get("resume_target") or "query_rewrite_node"
+    question = state.get("clarification_question")
+    source_node = return_to
 
 
-    print(f"[AskHuman] 中断来源: {source_node}")
-    print(f"[AskHuman] 问题: {question}")
-    print(f"[AskHuman] 将返回到: {return_to}")
+    logger.info("Interrupt from node=%s will resume to node=%s", source_node, return_to)
 
     # ⭐ 挂起执行，等待用户输入
     user_response = interrupt(question)
 
-    print(f"[AskHuman] 收到用户回复: {user_response}")
-
-    # ⭐ 构造消息记录
+    # 把“系统发出的澄清问题 + 用户补充的回复”都写回消息历史。
+    # 后续节点既可以直接消费 `resume_input`，也可以在 prompt 中看到完整对话。
     new_messages = [
         AIMessage(content=f"⏸️ {question}"),
         HumanMessage(content=user_response)
     ]
 
-    # ⭐ 统一返回：使用human_input存储用户输入
+    # 从这里开始，中断态被消费完成：
+    # - `awaiting_user_input` 复位
+    # - `clarification_question` / `resume_target` 清空
+    # - 用户新回复放进 `resume_input`，交给目标节点消费一次
     update_dict = {
         "messages": new_messages,
-        "need_clarification": False   # 清除中断状态
+        "awaiting_user_input": False,
+        "clarification_question": None,
+        "resume_target": None,
+        "resume_input": user_response,
     }
-
-    print(f"[AskHuman] 返回到节点: {return_to}")
 
     # ⭐ 返回到interrupt_context指定的节点
     return Command(

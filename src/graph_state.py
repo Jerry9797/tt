@@ -1,70 +1,125 @@
 import operator
 
 from pydantic import BaseModel, Field
-from typing import TypedDict, Annotated, List, Dict, Any, Union, Tuple, Optional
+from typing import Annotated, List, Literal, Optional, Required, TypedDict, Union
 from langchain_core.messages import AnyMessage
 from langgraph.graph.message import add_messages
-from requests.models import Response
 
-# 导入执行结果模型
-from src.models.execution_result import StepExecutionResult, PlanExecutionSummary
+from src.models.execution_result import PlanExecutionSummary, StepExecutionResult
 
 
 def overwrite(left, right):
+    """LangGraph reducer: 对标量/单值字段始终以后一次更新覆盖前一次。"""
     return right
 
-class AgentState(TypedDict):
-    original_query: str
-    rewritten_query: str
-    # 消息
-    messages: Annotated[List[AnyMessage], add_messages]
-    # 对query进行提取，查询FAQ
-    faq_response: list[str]
 
-    # 意图
-    intent: str
-    # 是否命中SOP
-    is_sop_matched: bool
-    # 计划
-    plan: Annotated[List[str], overwrite]
-    # 当前执行的步骤
-    current_step: Annotated[int, overwrite]
-    # 以及执行完成的步骤
-    past_steps: Annotated[List[Tuple], operator.add]
-    response: str
-    
-    # ⭐ 新增: 结构化的执行结果列表
+# 只有这两个节点会主动发起人工澄清，因此恢复目标被限制成固定字面量，
+# 这样状态里不会出现随手写错节点名的隐性 bug。
+ResumeTarget = Literal["query_rewrite_node", "plan_executor_node"]
+
+
+class AgentState(TypedDict, total=False):
+    """
+    LangGraph 全局状态。
+
+    设计原则：
+    1. 请求上下文、执行态、中断态、输出态分开命名，避免一个字段承担多个语义。
+    2. `messages` / `step_results` 这类“追加型”字段使用 reducer 聚合。
+    3. 其余字段尽量保持单值语义，由最新节点直接覆盖。
+    4. `total=False` 配合 `Required[...]` 使用，表示：运行时允许渐进式补齐字段，
+       但真正的最小初始状态仍然有明确约束。
+    """
+
+    # 请求上下文：这些字段描述用户问题本身，以及问题在图中的语义化结果。
+    # `original_query`
+    # 字面意思：用户最初输入的原始问题。
+    # 作用：作为整条链路的稳定输入，避免后续改写覆盖原始问题。
+    original_query: Required[str]
+    # `messages`
+    # 字面意思：当前会话累计的消息列表。
+    # 作用：给后续节点和模型提供上下文，支持多轮对话、工具消息和人工澄清历史。
+    messages: Required[Annotated[List[AnyMessage], add_messages]]
+    # `plan`
+    # 字面意思：当前待执行的步骤列表。
+    # 作用：作为 workflow 的执行主干，驱动 plan_executor 按顺序处理任务。
+    plan: Required[Annotated[List[str], overwrite]]
+    # `current_step`
+    # 字面意思：当前执行到的步骤下标。
+    # 作用：标记 plan 的推进进度，并决定下一轮执行哪个步骤。
+    current_step: Required[Annotated[int, overwrite]]
+
+    # `rewritten_query`
+    # 字面意思：在原始问题基础上补充上下文后的改写版本。
+    # 作用：提供给 FAQ 检索、SOP 匹配、planning 等节点作为更适合检索和推理的输入。
+    rewritten_query: Annotated[str, overwrite]
+    # `faq_response`
+    # 字面意思：FAQ 召回结果，统一存成字符串。
+    # 作用：作为可直接展示或继续传给后续节点参考的 FAQ 上下文。
+    faq_response: Annotated[Optional[str], overwrite]
+    # `intent`
+    # 字面意思：识别出的业务意图标签。
+    # 作用：告诉后续节点“这类问题属于什么场景”，用于选 SOP、选 prompt 或统计分类。
+    intent: Annotated[Optional[str], overwrite]
+    # `keywords`
+    # 字面意思：从 query rewrite 提取出的关键词。
+    # 作用：辅助检索增强，也方便调试时观察模型抓取了哪些核心信息。
+    keywords: Annotated[List[str], overwrite]
+
+    # 执行态：描述 plan 执行过程及其结构化产物。
+    # `step_results`
+    # 字面意思：每个步骤的结构化执行结果列表。
+    # 作用：沉淀步骤级状态、输出、耗时、工具调用等信息，方便调试、汇总和 UI 展示。
     step_results: Annotated[List[StepExecutionResult], operator.add]
-    
-    # ⭐ 新增: 当前正在执行的步骤结果
-    current_step_result: Annotated[Optional[StepExecutionResult], overwrite]
-    
-    # ⭐ 新增: 整体执行摘要
+    # `execution_summary`
+    # 字面意思：整个执行过程的最终摘要。
+    # 作用：把 step_results 汇总成面向接口和前端的总览信息，避免调用方自己再做二次聚合。
     execution_summary: Annotated[Optional[PlanExecutionSummary], overwrite]
-    
-    # ⭐ 新增: Human-in-the-Loop 通用字段
-    need_clarification: Annotated[bool, overwrite] # 是否中断
-    return_to: Annotated[str, overwrite] # 发出中断请求的node
 
+    # 中断态：只服务于 Human-in-the-Loop。
+    # `clarification_question`
+    # 字面意思：当前暂停时要问用户的问题。
+    # 作用：让 API/UI 能明确告诉用户“现在缺什么信息”。
+    clarification_question: Annotated[Optional[str], overwrite]
+    # `awaiting_user_input`
+    # 字面意思：图当前是否处于等待用户输入的状态。
+    # 作用：作为路由标记，让流程在 ask_human 和正常执行路径之间切换。
+    awaiting_user_input: Annotated[bool, overwrite]
+    # `resume_target`
+    # 字面意思：用户回复后应该恢复到的节点名。
+    # 作用：避免恢复时丢失上下文，确保继续执行到正确的节点。
+    resume_target: Annotated[Optional[ResumeTarget], overwrite]
+    # `resume_input`
+    # 字面意思：用户刚刚补充的那条输入。
+    # 作用：把澄清后的新信息显式传给恢复节点消费一次，避免只能从 messages 里反推。
+    resume_input: Annotated[Optional[str], overwrite]
+
+    # 输出态：只表示最终面向用户的答案，不再复用为澄清问题。
+    # `final_response`
+    # 字面意思：最终生成给用户的回复文本。
+    # 作用：作为成功路径的最终输出，供 API 返回和前端直接展示。
+    final_response: Annotated[Optional[str], overwrite]
 
 
 class Plan(BaseModel):
     steps: List[str] = Field(description="遵循的不同步骤，应按顺序排列")
 
 
-class Act(BaseModel):
-    """Action to perform."""
-    action: Union[Response, Plan] = Field(
-        description="Action to perform. If you want to respond to user, use Response. "
-        "If you need to further use tools to get the answer, use Plan."
-    )
+class Response(BaseModel):
+    """Response to user."""
+
+    response: str
     model_config = {
         "arbitrary_types_allowed": True
     }
 
-class Response(BaseModel):
-    """Response to user."""
-    response: str
+
+class Act(BaseModel):
+    """Action to perform."""
+
+    action: Union[Response, Plan] = Field(
+        description="Action to perform. If you want to respond to user, use Response. "
+        "If you need to further use tools to get the answer, use Plan."
+    )
     model_config = {
         "arbitrary_types_allowed": True
     }

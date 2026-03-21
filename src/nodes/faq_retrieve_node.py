@@ -1,15 +1,20 @@
+import logging
+
 from src.utils.qdrant_utils import qdrant_select
 from src.graph_state import AgentState
 
+logger = logging.getLogger(__name__)
+
+
 async def faq_retrieve_node(state: AgentState):
     rewritten_query = state.get("rewritten_query") or state.get("original_query")
-    if not rewritten_query or state.get("need_clarification"):
+    if not rewritten_query or state.get("awaiting_user_input"):
         return {"faq_response": None}
 
     try:
         results = qdrant_select(rewritten_query, collection_name="dz_channel_faq")
     except Exception as e:
-        print(f"[FAQ Retrieve] Qdrant 查询失败，跳过 FAQ 召回: {e}")
+        logger.warning("Qdrant query failed, skip FAQ retrieval: %s", e)
         return {"faq_response": None}
 
     faq_items = []

@@ -51,6 +51,7 @@ class StepExecutionResult(BaseModel):
     # 执行结果
     output_result: Optional[str] = Field(default=None, description="执行输出结果")
     agent_response: Optional[str] = Field(default=None, description="Agent响应内容")
+    tool_calls: list[ToolCall] = Field(default_factory=list, description="工具调用记录")
     
     # 时间信息
     start_time: Optional[datetime] = Field(default=None, description="开始时间")

@@ -1,23 +1,18 @@
-import asyncio
-from langgraph.types import Command, interrupt
+import logging
+from langgraph.types import Command
 from langchain_core.messages import SystemMessage, AIMessage, HumanMessage
 from langchain.agents import create_agent
 
 from langchain_core.output_parsers import JsonOutputParser
-from langchain_core.prompts import PromptTemplate, ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate
 from datetime import datetime
 import time
 
 from src.config.llm import get_gpt_model
+from src.config.sop_loader import get_sop_loader
 from src.graph_state import AgentState, Plan
 from src.tools import (
     ALL_TOOLS,
-    check_low_star_merchant, 
-    check_sensitive_merchant,
-    search_user_access_history,
-    restore_user_scene,
-    analyze_recall_chain,
-    parse_user_query_params
 )
 from src.models.execution_result import (
     StepExecutionResult,
@@ -26,6 +21,9 @@ from src.models.execution_result import (
     PlanExecutionSummary,
     TokenUsage
 )
+
+logger = logging.getLogger(__name__)
+sop_loader = get_sop_loader()
 
 
 async def planning_node(state: AgentState):
@@ -68,14 +66,22 @@ async def planning_node(state: AgentState):
 
 
 async def plan_executor_node(state: AgentState):
-    """增强版计划执行节点 - 支持Human-in-the-Loop（异步版本）"""
+    """
+    执行当前 plan step。
+
+    状态协议：
+    - 普通执行时，从 `plan[current_step]` 读取当前任务。
+    - 恢复执行时，只通过 `resume_input` 判断，避免再依赖旧的布尔标记推断上下文。
+    - 真正完成步骤后才把 `StepExecutionResult` 追加进 `step_results`。
+    - 如果中途需要澄清，则只写入中断态并跳到 `ask_human`，不落半成品步骤结果。
+    """
     plan = state.get("plan", [])
     current_step = state.get("current_step", 0)
     
     # 检查是否已完成所有步骤
     if current_step >= len(plan):
-        print(f"[PlanExecutor] 所有步骤已完成")
-        return finalize_execution(state)
+        logger.info("All plan steps completed, moving to finalization")
+        return Command(goto="finalize_execution_node")
     
     step_description = plan[current_step]
     
@@ -88,31 +94,21 @@ async def plan_executor_node(state: AgentState):
     )
 
     
-    # Added for new logic
+    # 当前轮次新增的 AI 提示消息会被拼进 prompt，同时也会回写消息历史。
     messages_to_add = []
     
-    # ⭐ 使用 state 字段判断是否处于中断恢复状态（更可靠）
-    user_input = None
-    is_resuming = state.get("need_clarification", False)
-    
+    # ⭐ 使用 resume_input 判断是否处于中断恢复状态
+    user_input = state.get("resume_input")
+    is_resuming = bool(user_input)
+
     if is_resuming:
-        # 处于中断状态，查找用户的回复
-        messages = state.get("messages", [])
-        
-        # 从后往前找最近的 HumanMessage
-        for i in range(len(messages) - 1, -1, -1):
-            msg = messages[i]
-            if isinstance(msg, HumanMessage):
-                user_input = msg.content
-                print(f"[Executor] 检测到用户回复（恢复模式）: {user_input}")
-                break
-        
-        if user_input:
-            # 添加恢复消息
-            resume_message = AIMessage(
-                content=f"▶️ 收到您的回复，继续执行步骤 {current_step + 1}"
-            )
-            messages_to_add.append(resume_message)
+        logger.info("Resuming plan execution for step %s", current_step + 1)
+        # 恢复执行时，用一条显式 AIMessage 把“刚收到过补充信息”写进上下文，
+        # 这样执行 prompt 里能读到状态转换，而不只是孤立的一句用户输入。
+        resume_message = AIMessage(
+            content=f"▶️ 收到您的回复，继续执行步骤 {current_step + 1}"
+        )
+        messages_to_add.append(resume_message)
     
     if not is_resuming:
         # 首次执行此步骤，添加开始消息
@@ -121,7 +117,7 @@ async def plan_executor_node(state: AgentState):
         )
         messages_to_add.append(start_message)
     
-    print(f"[执行] 步骤 {current_step + 1}/{len(plan)}: {step_description}")
+    logger.info("Executing step %s/%s: %s", current_step + 1, len(plan), step_description)
     
     # 准备Agent系统提示（传递当前轮次的新消息）
     system_prompt = build_executor_prompt(state, current_step, step_description, messages_to_add)
@@ -132,7 +128,7 @@ async def plan_executor_node(state: AgentState):
     mcp_manager = get_mcp_manager()
     mcp_tools = mcp_manager.get_all_tools()
 
-    print(f"[MCP] 已加载 {len(mcp_tools)} 个 MCP 工具")
+    logger.info("Loaded %s MCP tools", len(mcp_tools))
 
     # 合并静态工具和 MCP 工具
     all_tools = ALL_TOOLS + mcp_tools
@@ -147,8 +143,8 @@ async def plan_executor_node(state: AgentState):
     
     # 执行（异步）
     start_exec = time.time()
-    # ⭐ 构建输入消息：如果有用户回复，需要在当前轮次中传递给 Agent
-    # 虽然 system_prompt 包含历史，但 Agent 需要在 messages 参数中接收当前用户输入
+    # 恢复场景下，除了系统提示里已有完整历史，还要把本轮用户补充显式传给 Agent。
+    # 这样工具代理可以把这条输入当作“当前回合”的最新指令处理。
     input_messages = []
     if user_input:
         input_messages.append(HumanMessage(content=user_input))
@@ -168,13 +164,18 @@ async def plan_executor_node(state: AgentState):
                     completion_tokens=usage_data.get("completion_tokens", 0),
                     total_tokens=usage_data.get("total_tokens", 0)
                 )
-                print(f"[资源] Token消耗: {token_usage.total_tokens} (Prompt: {token_usage.prompt_tokens}, Completion: {token_usage.completion_tokens})")
+                logger.info(
+                    "Token usage total=%s prompt=%s completion=%s",
+                    token_usage.total_tokens,
+                    token_usage.prompt_tokens,
+                    token_usage.completion_tokens,
+                )
     
     output = execution_result["messages"][-1].content
     
     # ⭐ 检查是否需要询问用户
     if "ask_human" in output.lower():
-        print(f"[中断] 步骤 {current_step + 1} 需要用户输入")
+        logger.info("Step %s requires clarification", current_step + 1)
         
         # 提取问题（Agent应该在输出中说明需要什么信息）
         question = output.replace("ask_human", "").strip()
@@ -187,7 +188,9 @@ async def plan_executor_node(state: AgentState):
         # step_result.end_time = datetime.now()
         # step_result.duration_ms = exec_duration
         
-        # 添加中断消息
+        # 这里不把 RUNNING 的 step_result 落到 `step_results`。
+        # 否则恢复后会同时存在“半成品 running 结果”和“最终 success 结果”，
+        # 导致 execution summary 的统计失真。
         interrupt_message = AIMessage(
             content=f"⏸️ 步骤 {current_step + 1} 需要更多信息\n{question}"
         )
@@ -195,10 +198,10 @@ async def plan_executor_node(state: AgentState):
         
         # ⭐ 中断：不增加current_step，保持在当前步骤
         return Command(goto="ask_human", update={
-            "response": question,
-            "return_to": "plan_executor",
-            "need_clarification": True,
-            "step_results": [step_result],
+            "clarification_question": question,
+            "resume_target": "plan_executor_node",
+            "awaiting_user_input": True,
+            "resume_input": None,
             "messages": messages_to_add,
             # current_step 不变！用户回复后会重新执行这一步
         })
@@ -214,9 +217,10 @@ async def plan_executor_node(state: AgentState):
     step_result.token_usage = token_usage
     step_result.agent_response = str(output)
     step_result.output_result = output[:500] if output else ""
+    step_result.tool_calls = tool_calls
     
     # ⭐ 打印成功日志和工具结果
-    print(f"[成功] 步骤 {current_step + 1} 完成,耗时 {exec_duration:.2f}ms")
+    logger.info("Step %s completed in %.2fms", current_step + 1, exec_duration)
 
     # 📝 添加成功消息
     result_summary = step_result.output_result[:200] if step_result.output_result else "执行完成"
@@ -227,13 +231,15 @@ async def plan_executor_node(state: AgentState):
     )
     messages_to_add.append(success_message)
     
-    # ⭐ 成功后才增加current_step
+    # 只有真正执行成功后才推进 `current_step`，并清理可能残留的中断态字段。
     return {
         "current_step": current_step + 1,
         "step_results": [step_result],
         "messages": messages_to_add,
-        "need_clarification": False,
-        "past_steps": [(step_description, step_result.agent_response)]
+        "awaiting_user_input": False,
+        "clarification_question": None,
+        "resume_target": None,
+        "resume_input": None,
     }
 
 
@@ -288,13 +294,6 @@ def build_executor_prompt(state: AgentState, step_index: int, task: str, message
         messages.extend(messages_to_add)
     
     chat_history_str = format_message_history(messages)
-    
-    # 🔍 调试输出
-    print(f"\n[DEBUG] build_executor_prompt 调试信息:")
-    print(f"  原始消息数: {len(state.get('messages', []))}")
-    print(f"  新增消息数: {len(messages_to_add) if messages_to_add else 0}")
-    print(f"  合并后总数: {len(messages)}")
-    print(f"  对话历史:\n{chat_history_str if chat_history_str else '(无)'}")
 
     # 从 YAML 加载提示词模板
     executor_prompt_template = get_prompt("plan_executor")
@@ -306,10 +305,6 @@ def build_executor_prompt(state: AgentState, step_index: int, task: str, message
         context=context or '无',
         chat_history=chat_history_str or '无'
     )
-    
-    # 🔍 打印完整的 system_prompt
-    print(f"\n[DEBUG] System Prompt:\n{prompt}\n")
-    
     return prompt
 
 
@@ -344,16 +339,22 @@ def extract_output(result: dict) -> str:
 
 
 def finalize_execution(state: AgentState) -> dict:
-    """完成执行,生成摘要"""
+    """
+    基于结构化 step_results 生成最终执行摘要。
+
+    这里统一使用 `original_query` / `final_response`，不再回读历史上语义混杂的字段名。
+    """
     from langchain_core.messages import AIMessage
     
     step_results = state.get("step_results", [])
+    intent = state.get("intent")
+    is_sop = bool(intent and sop_loader.has_sop(intent))
 
     summary = PlanExecutionSummary(
         # plan_id=state.get("thread_id", "unknown"),
-        query=state.get("query", ""),
-        intent=state.get("intent"),
-        is_sop=state.get("is_sop_matched", False),
+        query=state.get("original_query", ""),
+        intent=intent,
+        is_sop=is_sop,
         total_steps=len(state.get("plan", [])),
         plan_steps=state.get("plan", []),
         completed_steps=len([r for r in step_results if r.status == StepStatus.SUCCESS]),
@@ -362,7 +363,7 @@ def finalize_execution(state: AgentState) -> dict:
         overall_status=StepStatus.SUCCESS if all(
             r.status == StepStatus.SUCCESS for r in step_results
         ) else StepStatus.FAILED,
-        final_response=state.get("response", "")
+        final_response=state.get("final_response", "")
     )
 
     # ⭐ 聚合 Token Usage
@@ -379,6 +380,8 @@ def finalize_execution(state: AgentState) -> dict:
             summary.total_duration_ms = (
                 summary.end_time - summary.start_time
             ).total_seconds() * 1000
+
+    duration_text = f"{summary.total_duration_ms:.0f}ms" if summary.total_duration_ms is not None else "未知"
     
     # 📝 添加完成消息
     status_emoji = "🎉" if summary.overall_status == StepStatus.SUCCESS else "⚠️"
@@ -387,7 +390,7 @@ def finalize_execution(state: AgentState) -> dict:
                 f"• 总计: {summary.total_steps} 步\n" +
                 f"• 成功: {summary.completed_steps} 步\n" +
                 f"• 失败: {summary.failed_steps} 步\n" +
-                f"• 总耗时: {summary.total_duration_ms:.0f}ms\n" +
+                f"• 总耗时: {duration_text}\n" +
                 f"• Token消耗: {summary.total_token_usage.total_tokens}"
     )
 
@@ -395,6 +398,10 @@ def finalize_execution(state: AgentState) -> dict:
         "execution_summary": summary,
         "messages": [completion_message]
     }
+
+
+async def finalize_execution_node(state: AgentState) -> dict:
+    return finalize_execution(state)
 
 
 async def replan_node(state: AgentState) -> dict:
@@ -414,14 +421,15 @@ async def replan_node(state: AgentState) -> dict:
     plan = state.get("plan", [])
     current_step = state.get("current_step", 0)
     step_results = state.get("step_results", [])
-    is_sop_matched = state.get("is_sop_matched", False)
+    intent = state.get("intent")
+    is_sop_matched = bool(intent and sop_loader.has_sop(intent))
     
     sop_completed = False
     # 判断是否执行完计划
     if is_sop_matched and step_results:
         if current_step >= len(plan):
             sop_completed = True
-            print(f"[Replan] SOP已全部执行完毕 ({len(plan)}步），现在允许replan")
+            logger.info("SOP plan completed with %s steps", len(plan))
     
     # 如果还没有执行任何步骤，直接继续
     if not step_results:
@@ -501,7 +509,7 @@ async def replan_node(state: AgentState) -> dict:
                     json_str = re.sub(r',(\s*[}\]])', r'\1', json_str)
                     decision_data = json.loads(json_str)
             except (json.JSONDecodeError, AttributeError) as e:
-                print(f"[Replan] JSON 解析失败: {e}")
+                logger.debug("Replan JSON parse failed: %s", e)
         
         # 策略3: 使用 LangChain 的 JsonOutputParser 强制解析
         if not decision_data:
@@ -509,11 +517,11 @@ async def replan_node(state: AgentState) -> dict:
                 parser = JsonOutputParser()
                 decision_data = parser.invoke(result)
             except Exception as e:
-                print(f"[Replan] JsonOutputParser 失败: {e}")
+                logger.debug("Replan JsonOutputParser failed: %s", e)
         
         # 最后的兜底: 默认继续执行
         if not decision_data:
-            print(f"[Replan] 无法解析响应，原始内容: {result.content[:200]}")
+            logger.warning("Unable to parse replan response, defaulting to continue")
             decision_data = {
                 "decision": "continue",
                 "reasoning": "无法解析LLM响应，默认继续执行"
@@ -521,22 +529,19 @@ async def replan_node(state: AgentState) -> dict:
         decision = decision_data.get("decision", "continue")
         reasoning = decision_data.get("reasoning", "")
         
-        print(f"\n[Replan] 决策: {decision}")
-        print(f"[Replan] 推理: {reasoning}")
+        logger.info("Replan decision=%s reasoning=%s", decision, reasoning[:120])
         
         messages_to_add = []
         
         # 根据决策返回不同的结果
         if decision == "respond":
-            # 不再直接生成答案，路由到专门的答案生成节点
             routing_message = AIMessage(
                 content="💡 已收集足够信息，正在生成最终答案..."
             )
             messages_to_add.append(routing_message)
-            
-            return Command(goto="response_generator", update={
+
+            return Command(goto="finalize_execution_node", update={
                 "messages": messages_to_add,
-                # 标记为完成，停止继续执行计划
                 "current_step": len(plan)
             })
         
@@ -566,9 +571,7 @@ async def replan_node(state: AgentState) -> dict:
             }
     
     except Exception as e:
-        print(f"[Replan] 错误: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.exception("Replan failed")
         
         # 出错时默认继续执行
         error_message = AIMessage(

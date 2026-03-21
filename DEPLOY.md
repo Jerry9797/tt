@@ -45,8 +45,8 @@ OPENAI_COMPAT_MODEL=gpt-4.1
 将仓库拉到服务器后，在项目根目录执行：
 
 ```bash
-cp .env_copy.example .env_copy
-vim .env_copy
+cp .env.example .env
+vim .env
 docker compose -f deploy/docker-compose.yml build
 docker compose -f deploy/docker-compose.yml up -d
 ```
@@ -64,8 +64,8 @@ QDRANT_HOST=host.docker.internal
 如果你要在同一台机器上把 API、MySQL、Redis、Qdrant 一起拉起：
 
 ```bash
-cp .env_copy.example .env_copy
-vim .env_copy
+cp .env.example .env
+vim .env
 docker compose -f deploy/docker-compose.stack.yml up -d --build
 ```
 

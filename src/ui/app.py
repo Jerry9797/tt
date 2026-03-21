@@ -98,7 +98,7 @@ if "selected_checkpoint_idx" not in st.session_state:
 
 # 初始化 selected_thread_id
 if "selected_thread_id" not in st.session_state:
-    st.session_state.selected_thread_id = "default_thread"
+    st.session_state.selected_thread_id = st.session_state.thread_id
 
 # Sidebar 显示当前状态
 with st.sidebar:
@@ -108,7 +108,9 @@ with st.sidebar:
     thread_id = st.text_input("Thread ID", value=st.session_state.selected_thread_id)
     if thread_id != st.session_state.selected_thread_id:
         st.session_state.selected_thread_id = thread_id
-        st.session_state.messages = [] # 切换 thread 时清空显示的消息
+        st.session_state.thread_id = thread_id
+        st.session_state.messages = []
+        st.session_state.waiting_for_clarification = False
         st.rerun()
 
     st.header("Debug Info")
@@ -117,6 +119,7 @@ with st.sidebar:
     if st.button("New Session"):
         st.session_state.messages = []
         st.session_state.thread_id = f"session_{uuid.uuid4().hex[:8]}"
+        st.session_state.selected_thread_id = st.session_state.thread_id
         st.session_state.waiting_for_clarification = False
         st.session_state.selected_checkpoint_idx = None
         st.rerun()
@@ -183,7 +186,9 @@ with st.sidebar:
             st.info(f"📜 Viewing history from: `{selected_thread_id}`")
             if st.button("Switch to this session", help="切换到此会话并继续对话"):
                 st.session_state.thread_id = selected_thread_id
+                st.session_state.selected_thread_id = selected_thread_id
                 st.session_state.messages = []  # 清空当前消息
+                st.session_state.waiting_for_clarification = False
                 st.rerun()
     
     st.divider()
@@ -243,12 +248,21 @@ with st.sidebar:
                     try:
                         checkpoint_id = selected_checkpoint["checkpoint_id"]
                         with st.spinner("Rolling back..."):
-                            result = rollback_to_checkpoint(
-                                st.session_state.graph,
-                                st.session_state.thread_id,
-                                checkpoint_id,
-                                inputs=None
-                            )
+                            async def run_rollback():
+                                graph = None
+                                try:
+                                    graph = await build_graph(init_mcp=False)
+                                    return await rollback_to_checkpoint(
+                                        graph,
+                                        st.session_state.thread_id,
+                                        checkpoint_id,
+                                        inputs=None
+                                    )
+                                finally:
+                                    if graph and hasattr(graph.checkpointer, 'conn'):
+                                        graph.checkpointer.conn.close()
+
+                            result = asyncio.run(run_rollback())
                         st.success("Rollback successful!")
                         st.rerun()
                     except Exception as e:
@@ -284,7 +298,7 @@ with st.sidebar:
                     
                     if submitted:
                         try:
-                            updates = {"query": edited_query}
+                            updates = {"original_query": edited_query}
                             checkpoint_id = selected_checkpoint["checkpoint_id"]
                             
                             with st.spinner("Updating state and continuing..."):
