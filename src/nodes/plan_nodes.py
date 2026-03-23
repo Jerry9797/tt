@@ -1,13 +1,15 @@
+import json
 import logging
+import re
+import time
+from datetime import datetime
+
 from langgraph.types import Command
 from langchain_core.messages import SystemMessage, AIMessage, HumanMessage, ToolMessage
-
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.prompts import ChatPromptTemplate
-from datetime import datetime
-import time
 
-from src.config.llm import get_gpt_model
+from src.config.llm import get_gpt_model, mt_llm
 from src.config.sop_loader import get_sop_loader
 from src.graph_state import AgentState, Plan
 from src.tools import (
@@ -23,32 +25,48 @@ from src.models.execution_result import (
 
 logger = logging.getLogger(__name__)
 sop_loader = get_sop_loader()
+_ASK_HUMAN_RE = re.compile(r"^\[ASK_HUMAN\]\s*:?\s*(.*)", re.MULTILINE)
+
+
+def _extract_token_usage(response) -> TokenUsage:
+    """从 LLM 响应中提取 token 使用量。"""
+    if hasattr(response, "response_metadata"):
+        usage_data = response.response_metadata.get("token_usage", {})
+        if usage_data:
+            return TokenUsage(
+                prompt_tokens=usage_data.get("prompt_tokens", 0),
+                completion_tokens=usage_data.get("completion_tokens", 0),
+                total_tokens=usage_data.get("total_tokens", 0),
+            )
+    return TokenUsage()
 
 
 async def planning_node(state: AgentState):
     """生成执行计划 - 根据intent动态选择prompt"""
-    from langchain_core.messages import AIMessage
-    from src.config.sop_loader import get_sop_loader
-
     rewritten_query = state['rewritten_query']
     intent = state.get('intent', 'default')
-    
-    # ⭐ 从SOPLoader获取planning prompt
-    sop_loader = get_sop_loader()
+
+    # ⭐ 从SOPLoader获取planning prompt（使用模块级 sop_loader）
     plan_prompt = sop_loader.get_planning_prompt(intent)
 
     plan_parser = JsonOutputParser(pydantic_object=Plan)
     format_instructions = plan_parser.get_format_instructions()
 
     from src.prompt.prompt_loader import get_prompt
-    prompt = ChatPromptTemplate.from_messages([
-        SystemMessage(content=get_prompt("system_prompt")),
-        SystemMessage(content=plan_prompt) if plan_prompt else "",
+    plan_messages = [SystemMessage(content=get_prompt("system_prompt"))]
+    if plan_prompt:
+        plan_messages.append(SystemMessage(content=plan_prompt))
+    plan_messages.extend([
         HumanMessage(content=rewritten_query),
         SystemMessage(content=f"所有回复必须遵循以下格式：\n{format_instructions}"),
     ])
-    chain = prompt | get_gpt_model("gpt-4.1").bind_tools(ALL_TOOLS) | JsonOutputParser()
-    result = await chain.ainvoke({})
+    prompt = ChatPromptTemplate.from_messages(plan_messages)
+    chain = prompt | mt_llm("gpt-4.1-mini") | plan_parser
+    try:
+        result = await chain.ainvoke({})
+    except Exception:
+        logger.warning("Plan parsing failed, retrying once")
+        result = await chain.ainvoke({})
     steps = result.get('steps', [])
     
     # 📝 添加计划生成消息
@@ -102,7 +120,7 @@ async def plan_executor_node(state: AgentState, tools: list = None):
 
     if is_resuming:
         logger.info("Resuming plan execution for step %s", current_step + 1)
-        # 恢复执行时，用一条显式 AIMessage 把“刚收到过补充信息”写进上下文，
+        # 恢复执行时，用一条显式 AIMessage 把"刚收到过补充信息"写进上下文，
         # 这样执行 prompt 里能读到状态转换，而不只是孤立的一句用户输入。
         resume_message = AIMessage(
             content=f"▶️ 收到您的回复，继续执行步骤 {current_step + 1}"
@@ -131,7 +149,7 @@ async def plan_executor_node(state: AgentState, tools: list = None):
     logger.info("Using %s tools for step %s", len(all_tools), current_step + 1)
 
     # ⭐ 使用 bind_tools 替代 create_agent，固定 2 次 LLM 调用
-    llm = get_gpt_model(“gpt-4.1-mini”).bind_tools(all_tools)
+    llm = mt_llm("gpt-4.1-mini").bind_tools(all_tools)
     tool_map = {t.name: t for t in all_tools}
 
     # 构建输入消息
@@ -149,17 +167,17 @@ async def plan_executor_node(state: AgentState, tools: list = None):
     tool_messages = []
     if ai_response.tool_calls:
         for tc in ai_response.tool_calls:
-            tool_func = tool_map.get(tc[“name”])
+            tool_func = tool_map.get(tc["name"])
             if tool_func:
                 try:
-                    result = await tool_func.ainvoke(tc[“args”])
+                    result = await tool_func.ainvoke(tc["args"])
                 except Exception as e:
-                    result = f”工具调用失败: {e}”
+                    result = f"工具调用失败: {e}"
             else:
-                result = f”未找到工具: {tc['name']}”
+                result = f"未找到工具: {tc['name']}"
             tool_messages.append(ToolMessage(
                 content=str(result),
-                tool_call_id=tc[“id”],
+                tool_call_id=tc["id"],
             ))
 
     # 第2次调用：LLM 汇总工具结果生成最终输出
@@ -171,31 +189,27 @@ async def plan_executor_node(state: AgentState, tools: list = None):
         final_response = ai_response
 
     exec_duration = (time.time() - start_exec) * 1000
-    # ⭐ 提取 Token Usage
-    token_usage = TokenUsage()
-    if hasattr(final_response, “response_metadata”):
-        usage_data = final_response.response_metadata.get(“token_usage”, {})
-        if usage_data:
-            token_usage = TokenUsage(
-                prompt_tokens=usage_data.get(“prompt_tokens”, 0),
-                completion_tokens=usage_data.get(“completion_tokens”, 0),
-                total_tokens=usage_data.get(“total_tokens”, 0)
-            )
-            logger.info(
-                “Token usage total=%s prompt=%s completion=%s”,
-                token_usage.total_tokens,
-                token_usage.prompt_tokens,
-                token_usage.completion_tokens,
-            )
+    # ⭐ 提取 Token Usage（累加两次 LLM 调用）
+    token_usage = _extract_token_usage(ai_response)
+    if tool_messages:
+        token_usage.add(_extract_token_usage(final_response))
+    if token_usage.total_tokens:
+        logger.info(
+            "Token usage total=%s prompt=%s completion=%s",
+            token_usage.total_tokens,
+            token_usage.prompt_tokens,
+            token_usage.completion_tokens,
+        )
 
     output = final_response.content
     
     # ⭐ 检查是否需要询问用户
-    if "ask_human" in output.lower():
+    ask_match = _ASK_HUMAN_RE.search(output)
+    if ask_match:
         logger.info("Step %s requires clarification", current_step + 1)
-        
+
         # 提取问题（Agent应该在输出中说明需要什么信息）
-        question = output.replace("ask_human", "").strip()
+        question = ask_match.group(1).strip()
         if not question:
             question = "请提供执行此步骤所需的信息"
         
@@ -206,7 +220,7 @@ async def plan_executor_node(state: AgentState, tools: list = None):
         # step_result.duration_ms = exec_duration
         
         # 这里不把 RUNNING 的 step_result 落到 `step_results`。
-        # 否则恢复后会同时存在“半成品 running 结果”和“最终 success 结果”，
+        # 否则恢复后会同时存在"半成品 running 结果"和"最终 success 结果"，
         # 导致 execution summary 的统计失真。
         interrupt_message = AIMessage(
             content=f"⏸️ 步骤 {current_step + 1} 需要更多信息\n{question}"
@@ -338,8 +352,6 @@ def finalize_execution(state: AgentState) -> dict:
 
     这里统一使用 `original_query` / `final_response`，不再回读历史上语义混杂的字段名。
     """
-    from langchain_core.messages import AIMessage
-    
     step_results = state.get("step_results", [])
     intent = state.get("intent")
     is_sop = bool(intent and sop_loader.has_sop(intent))
@@ -432,7 +444,7 @@ async def replan_node(state: AgentState) -> dict:
     # 构建已完成步骤的摘要
     completed_steps_summary = []
     for result in step_results:
-        status = "✅ 成功" if result.status == "success" else "❌ 失败"
+        status = "✅ 成功" if result.status == StepStatus.SUCCESS else "❌ 失败"
         summary = f"{status} 步骤{result.step_index + 1}: {result.step_description}"
         if result.output_result:
             summary += f"\n   结果: {result.output_result[:150]}"
@@ -476,12 +488,9 @@ async def replan_node(state: AgentState) -> dict:
     ]
     
     try:
-        result = await get_gpt_model("gpt-4.1-mini").ainvoke(messages)
+        result = await mt_llm("gpt-4.1-mini").ainvoke(messages)
         
         # 解析LLM响应
-        import json
-        import re
-        
         decision_data = None
         
         # 策略1: 直接解析 result.content

@@ -3,7 +3,7 @@ import logging
 
 from langchain_core.messages import SystemMessage, HumanMessage
 
-from src.config.llm import get_gpt_model
+from src.config.llm import get_gpt_model, mt_llm
 from src.graph_state import AgentState
 from src.config.sop_loader import get_sop_loader
 
@@ -55,7 +55,7 @@ async def sop_match_node(state: AgentState):
         HumanMessage(content=rewritten_query),
     ]
 
-    response = await get_gpt_model("gpt-4o-mini").ainvoke(messages)
+    response = await mt_llm("gpt-4.1-mini").ainvoke(messages)
     intent = response.content.strip()
     
     if intent and intent in intent_dict:

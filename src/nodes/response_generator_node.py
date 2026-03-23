@@ -12,7 +12,7 @@ import logging
 from langchain_core.messages import AIMessage
 from langchain_core.prompts import ChatPromptTemplate
 
-from src.config.llm import get_gpt_model
+from src.config.llm import get_gpt_model, mt_llm
 from src.graph_state import AgentState
 from src.prompt.prompt_loader import get_prompt
 
@@ -41,7 +41,7 @@ async def response_generator_node(state: AgentState) -> dict:
     )
     
     # chain = response_prompt | get_claude_model(model="claude-haiku-4-5",streaming=True)
-    chain = response_prompt | get_gpt_model(model="gpt-4.1",streaming=True)
+    chain = response_prompt | mt_llm(model="gpt-4.1",streaming=True)
     result = await chain.ainvoke(payload)
     
     final_response = result.content

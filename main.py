@@ -2,7 +2,7 @@ import asyncio
 from langchain_core.messages import SystemMessage
 from langchain_core.prompts import ChatPromptTemplate
 # 确保你的路径正确
-from src.config.llm import get_claude_model, get_gpt_model
+from src.config.llm import get_claude_model, get_gpt_model, mt_llm
 
 # 1. 修正 Prompt 定义
 # from_messages 必须接收一个列表 []
@@ -15,7 +15,7 @@ response_prompt = ChatPromptTemplate.from_messages([
 
 async def main():
     # 2. 获取模型（请确认 gpt-4.1 是否是你们网关定义的特殊名称，否则建议用 gpt-4o）
-    model = get_claude_model(model="claude-haiku-4-5", streaming=True)
+    model = mt_llm(model="gpt-4.1", streaming=True)
 
     # 3. 组合 Chain
     chain = response_prompt | model
