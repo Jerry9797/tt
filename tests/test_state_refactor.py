@@ -1,6 +1,6 @@
 import unittest
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 from langchain_core.messages import AIMessage
 from langgraph.errors import GraphInterrupt
@@ -136,17 +136,14 @@ class HumanInTheLoopFlowTests(unittest.IsolatedAsyncioTestCase):
         interrupt_mock.assert_called_once_with("请补充商户ID")
 
     async def test_plan_executor_interrupts_without_persisting_running_step(self):
-        mock_agent = SimpleNamespace(
-            ainvoke=AsyncMock(
-                return_value={"messages": [AIMessage(content="ask_human 请补充商户ID")]}
-            )
-        )
-        mcp_manager = SimpleNamespace(get_all_tools=lambda: [])
+        mock_llm_response = AIMessage(content="ask_human 请补充商户ID")
+        mock_llm_response.tool_calls = []
+        mock_llm = AsyncMock()
+        mock_llm.bind_tools = Mock(return_value=mock_llm)
+        mock_llm.ainvoke = AsyncMock(return_value=mock_llm_response)
 
         with patch("src.nodes.plan_nodes.build_executor_prompt", return_value="prompt"), \
-             patch("src.nodes.plan_nodes.get_gpt_model", return_value=object()), \
-             patch("src.nodes.plan_nodes.create_agent", return_value=mock_agent), \
-             patch("src.mcp.get_mcp_manager", return_value=mcp_manager):
+             patch("src.nodes.plan_nodes.get_gpt_model", return_value=mock_llm):
             command = await plan_executor_node(
                 {
                     "original_query": "查询商户",
@@ -154,7 +151,8 @@ class HumanInTheLoopFlowTests(unittest.IsolatedAsyncioTestCase):
                     "messages": [],
                     "plan": ["检查召回"],
                     "current_step": 0,
-                }
+                },
+                tools=[],
             )
 
         self.assertIsInstance(command, Command)
@@ -165,15 +163,14 @@ class HumanInTheLoopFlowTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("step_results", command.update)
 
     async def test_plan_executor_consumes_resume_input_on_success(self):
-        mock_agent = SimpleNamespace(
-            ainvoke=AsyncMock(return_value={"messages": [AIMessage(content="处理完成")]})
-        )
-        mcp_manager = SimpleNamespace(get_all_tools=lambda: [])
+        mock_llm_response = AIMessage(content="处理完成")
+        mock_llm_response.tool_calls = []
+        mock_llm = AsyncMock()
+        mock_llm.bind_tools = Mock(return_value=mock_llm)
+        mock_llm.ainvoke = AsyncMock(return_value=mock_llm_response)
 
         with patch("src.nodes.plan_nodes.build_executor_prompt", return_value="prompt"), \
-             patch("src.nodes.plan_nodes.get_gpt_model", return_value=object()), \
-             patch("src.nodes.plan_nodes.create_agent", return_value=mock_agent), \
-             patch("src.mcp.get_mcp_manager", return_value=mcp_manager):
+             patch("src.nodes.plan_nodes.get_gpt_model", return_value=mock_llm):
             result = await plan_executor_node(
                 {
                     "original_query": "查询商户",
@@ -182,7 +179,8 @@ class HumanInTheLoopFlowTests(unittest.IsolatedAsyncioTestCase):
                     "plan": ["检查召回"],
                     "current_step": 0,
                     "resume_input": "商户1002",
-                }
+                },
+                tools=[],
             )
 
         self.assertEqual(result["current_step"], 1)

@@ -1,5 +1,6 @@
 import logging
 import os
+from functools import partial
 
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.checkpoint.mysql.aio import AIOMySQLSaver
@@ -19,6 +20,7 @@ from src.nodes.plan_nodes import (
 from src.nodes.query_rewrite_node import query_rewrite_node
 from src.nodes.response_generator_node import response_generator_node
 from src.nodes.sop_match_node import sop_match_node
+from src.tools import ALL_TOOLS
 
 logger = logging.getLogger(__name__)
 sop_loader = get_sop_loader()
@@ -33,13 +35,19 @@ async def build_graph(init_mcp: bool = True):
         except Exception as exc:
             logger.warning("MCP initialization failed, falling back to non-MCP tools: %s", exc)
 
+    # ⭐ 在图构建时一次性合并工具，避免循环内重复组装
+    from src.mcp import get_mcp_manager
+    mcp_tools = get_mcp_manager().get_all_tools()
+    merged_tools = ALL_TOOLS + mcp_tools
+    logger.info("Merged %s tools (%s static + %s MCP)", len(merged_tools), len(ALL_TOOLS), len(mcp_tools))
+
     graph = StateGraph(AgentState)
     graph.add_node("query_rewrite_node", query_rewrite_node)
     graph.add_node("ask_human", ask_human)
     graph.add_node("faq_retrieve_node", faq_retrieve_node)
     graph.add_node("sop_match_node", sop_match_node)
     graph.add_node("planning_node", planning_node)
-    graph.add_node("plan_executor_node", plan_executor_node)
+    graph.add_node("plan_executor_node", partial(plan_executor_node, tools=merged_tools))
     graph.add_node("replan_node", replan_node)
     graph.add_node("finalize_execution_node", finalize_execution_node)
     graph.add_node("response_generator", response_generator_node)

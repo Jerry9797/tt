@@ -1,7 +1,6 @@
 import logging
 from langgraph.types import Command
-from langchain_core.messages import SystemMessage, AIMessage, HumanMessage
-from langchain.agents import create_agent
+from langchain_core.messages import SystemMessage, AIMessage, HumanMessage, ToolMessage
 
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.prompts import ChatPromptTemplate
@@ -65,7 +64,7 @@ async def planning_node(state: AgentState):
     }
 
 
-async def plan_executor_node(state: AgentState):
+async def plan_executor_node(state: AgentState, tools: list = None):
     """
     执行当前 plan step。
 
@@ -122,56 +121,74 @@ async def plan_executor_node(state: AgentState):
     # 准备Agent系统提示（传递当前轮次的新消息）
     system_prompt = build_executor_prompt(state, current_step, step_description, messages_to_add)
     
-    # ⭐ 获取 MCP 工具并合并
-    from src.mcp import get_mcp_manager
+    # ⭐ 使用预合并的工具（由 build_graph 通过 partial 注入），兜底回退到运行时组装
+    if tools is not None:
+        all_tools = tools
+    else:
+        from src.mcp import get_mcp_manager
+        mcp_tools = get_mcp_manager().get_all_tools()
+        all_tools = ALL_TOOLS + mcp_tools
+    logger.info("Using %s tools for step %s", len(all_tools), current_step + 1)
 
-    mcp_manager = get_mcp_manager()
-    mcp_tools = mcp_manager.get_all_tools()
+    # ⭐ 使用 bind_tools 替代 create_agent，固定 2 次 LLM 调用
+    llm = get_gpt_model(“gpt-4.1-mini”).bind_tools(all_tools)
+    tool_map = {t.name: t for t in all_tools}
 
-    logger.info("Loaded %s MCP tools", len(mcp_tools))
-
-    # 合并静态工具和 MCP 工具
-    all_tools = ALL_TOOLS + mcp_tools
-
-    # 创建Agent
-    agent = create_agent(
-        system_prompt=system_prompt,
-        # 本地环境的 openai-proxy token 已失效，执行节点优先走已验证可用的通义模型。
-        model=get_gpt_model(),
-        tools=all_tools,  # ⭐ 使用合并后的工具列表
-    )
-    
-    # 执行（异步）
-    start_exec = time.time()
-    # 恢复场景下，除了系统提示里已有完整历史，还要把本轮用户补充显式传给 Agent。
-    # 这样工具代理可以把这条输入当作“当前回合”的最新指令处理。
-    input_messages = []
+    # 构建输入消息
+    input_messages = [SystemMessage(content=system_prompt)]
     if user_input:
         input_messages.append(HumanMessage(content=user_input))
-    
-    execution_result = await agent.ainvoke({"messages": input_messages})
+
+    # 执行（异步）
+    start_exec = time.time()
+
+    # 第1次调用：LLM 决定调哪些工具
+    ai_response = await llm.ainvoke(input_messages)
+
+    # 执行工具调用
+    tool_messages = []
+    if ai_response.tool_calls:
+        for tc in ai_response.tool_calls:
+            tool_func = tool_map.get(tc[“name”])
+            if tool_func:
+                try:
+                    result = await tool_func.ainvoke(tc[“args”])
+                except Exception as e:
+                    result = f”工具调用失败: {e}”
+            else:
+                result = f”未找到工具: {tc['name']}”
+            tool_messages.append(ToolMessage(
+                content=str(result),
+                tool_call_id=tc[“id”],
+            ))
+
+    # 第2次调用：LLM 汇总工具结果生成最终输出
+    if tool_messages:
+        final_response = await llm.ainvoke(
+            input_messages + [ai_response] + tool_messages
+        )
+    else:
+        final_response = ai_response
 
     exec_duration = (time.time() - start_exec) * 1000
     # ⭐ 提取 Token Usage
     token_usage = TokenUsage()
-    if "messages" in execution_result and execution_result["messages"]:
-        last_msg = execution_result["messages"][-1]
-        if hasattr(last_msg, "response_metadata"):
-            usage_data = last_msg.response_metadata.get("token_usage", {})
-            if usage_data:
-                token_usage = TokenUsage(
-                    prompt_tokens=usage_data.get("prompt_tokens", 0),
-                    completion_tokens=usage_data.get("completion_tokens", 0),
-                    total_tokens=usage_data.get("total_tokens", 0)
-                )
-                logger.info(
-                    "Token usage total=%s prompt=%s completion=%s",
-                    token_usage.total_tokens,
-                    token_usage.prompt_tokens,
-                    token_usage.completion_tokens,
-                )
-    
-    output = execution_result["messages"][-1].content
+    if hasattr(final_response, “response_metadata”):
+        usage_data = final_response.response_metadata.get(“token_usage”, {})
+        if usage_data:
+            token_usage = TokenUsage(
+                prompt_tokens=usage_data.get(“prompt_tokens”, 0),
+                completion_tokens=usage_data.get(“completion_tokens”, 0),
+                total_tokens=usage_data.get(“total_tokens”, 0)
+            )
+            logger.info(
+                “Token usage total=%s prompt=%s completion=%s”,
+                token_usage.total_tokens,
+                token_usage.prompt_tokens,
+                token_usage.completion_tokens,
+            )
+
+    output = final_response.content
     
     # ⭐ 检查是否需要询问用户
     if "ask_human" in output.lower():
@@ -208,7 +225,13 @@ async def plan_executor_node(state: AgentState):
     
     # 正常执行完成
     # 提取工具调用信息
-    tool_calls = extract_tool_calls(execution_result)
+    tool_calls = []
+    if ai_response.tool_calls:
+        for tc in ai_response.tool_calls:
+            tool_calls.append(ToolCall(
+                tool_name=tc.get("name", "unknown"),
+                arguments=tc.get("args", {}),
+            ))
     
     # 更新结果
     step_result.status = StepStatus.SUCCESS
@@ -307,35 +330,6 @@ def build_executor_prompt(state: AgentState, step_index: int, task: str, message
     )
     return prompt
 
-
-
-def extract_tool_calls(result: dict) -> list:
-    """从Agent结果中提取工具调用信息"""
-    tool_calls_list = []
-    messages = result.get("messages", [])
-
-    for msg in messages:
-        if hasattr(msg, "tool_calls") and msg.tool_calls:
-            for tc in msg.tool_calls:
-                tool_calls_list.append(ToolCall(
-                    tool_name=tc.get("name", "unknown"),
-                    arguments=tc.get("args", {}),
-                    result=tc.get("result"),
-                    error=tc.get("error")
-                ))
-
-    return tool_calls_list
-
-
-def extract_output(result: dict) -> str:
-    """提取输出结果"""
-    if "output" in result:
-        return str(result["output"])
-    if "messages" in result and result["messages"]:
-        last_msg = result["messages"][-1]
-        if hasattr(last_msg, "content"):
-            return last_msg.content
-    return ""
 
 
 def finalize_execution(state: AgentState) -> dict:
@@ -482,7 +476,7 @@ async def replan_node(state: AgentState) -> dict:
     ]
     
     try:
-        result = await get_gpt_model().ainvoke(messages)
+        result = await get_gpt_model("gpt-4.1-mini").ainvoke(messages)
         
         # 解析LLM响应
         import json
