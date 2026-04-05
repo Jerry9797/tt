@@ -38,7 +38,7 @@ async def query_rewrite_node(state: AgentState):
 
     chain : Runnable = (
             query_rewrite_prompt
-            | mt_llm("gpt-4.1-mini")
+            | get_gpt_model("gpt-4.1-mini")
             | JsonOutputParser()
     )
 

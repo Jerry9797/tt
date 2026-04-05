@@ -32,6 +32,17 @@ OPENAI_COMPAT_MODEL=gpt-4.1
 
 代码会优先使用这组变量；未设置时才退回当前默认值。
 
+如果你希望在线上启用 LangSmith tracing，请同时在 `.env` 中加入：
+
+```dotenv
+LANGSMITH_API_KEY=your_langsmith_api_key
+LANGSMITH_TRACING=true
+LANGSMITH_PROJECT=tt
+LANGSMITH_ENDPOINT=https://api.smith.langchain.com
+```
+
+这组变量只影响观测与 tracing；未配置 `LANGSMITH_API_KEY` 时，API 仍可正常启动和对外服务。
+
 ## 2. 安装运行时
 
 在云主机安装：
@@ -133,3 +144,4 @@ curl -N -X POST https://your-domain.example/chat/stream \
 - 如果要迁移 Qdrant，请只修改环境变量 `QDRANT_HOST`、`QDRANT_PORT`、`QDRANT_API_KEY`、`QDRANT_HTTPS`，不要改代码。
 - 如果 API 和中间件都在 Compose 里，优先使用服务名互联，不要使用 `127.0.0.1`。
 - 如果 API 单独在 Compose 里，而 MySQL、Redis、Qdrant 是宿主机上已存在的容器，优先使用 `host.docker.internal`，不要使用 `127.0.0.1`。
+- 如果启用了 LangSmith，生产环境同样通过 `.env` 注入 `LANGSMITH_*` 变量，不需要额外改 Dockerfile 或启动命令。

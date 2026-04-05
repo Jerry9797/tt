@@ -6,6 +6,22 @@
 - Streamlit 调试页: `streamlit run src/ui/app.py`
 - 兼容的环境变量示例见 `.env.example`
 
+## LangSmith
+
+本项目采用 LangSmith 官方环境变量做最小接入。安装依赖并在 `.env` 中配置后，LangChain/LangGraph 调用会自动上报 tracing，不需要额外改业务代码。
+
+```dotenv
+LANGSMITH_API_KEY=your_langsmith_api_key
+LANGSMITH_TRACING=true
+LANGSMITH_PROJECT=tt
+LANGSMITH_ENDPOINT=https://api.smith.langchain.com
+```
+
+说明：
+
+- 未配置 `LANGSMITH_API_KEY` 时，应用仍可正常运行，只是不产生 LangSmith trace。
+- FastAPI 与 Streamlit 共用同一套环境变量，两个入口都会按当前进程环境决定是否上报。
+
 ## 部署
 
 云端部署说明见 [DEPLOY.md](DEPLOY.md)。

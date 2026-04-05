@@ -18,7 +18,7 @@ def build_model(target: str):
     if target == "claude":
         return get_claude_model()
     if target == "mt":
-        return mt_llm(streaming=False)
+        return get_gpt_model(streaming=False)
     raise ValueError(f"Unsupported target: {target}")
 
 

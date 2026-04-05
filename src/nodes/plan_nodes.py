@@ -61,7 +61,7 @@ async def planning_node(state: AgentState):
         SystemMessage(content=f"所有回复必须遵循以下格式：\n{format_instructions}"),
     ])
     prompt = ChatPromptTemplate.from_messages(plan_messages)
-    chain = prompt | mt_llm("gpt-4.1-mini") | plan_parser
+    chain = prompt | get_gpt_model("gpt-4.1-mini") | plan_parser
     try:
         result = await chain.ainvoke({})
     except Exception:
@@ -149,7 +149,7 @@ async def plan_executor_node(state: AgentState, tools: list = None):
     logger.info("Using %s tools for step %s", len(all_tools), current_step + 1)
 
     # ⭐ 使用 bind_tools 替代 create_agent，固定 2 次 LLM 调用
-    llm = mt_llm("gpt-4.1-mini").bind_tools(all_tools)
+    llm = get_gpt_model("gpt-4.1-mini").bind_tools(all_tools)
     tool_map = {t.name: t for t in all_tools}
 
     # 构建输入消息
@@ -488,7 +488,7 @@ async def replan_node(state: AgentState) -> dict:
     ]
     
     try:
-        result = await mt_llm("gpt-4.1-mini").ainvoke(messages)
+        result = await get_gpt_model("gpt-4.1-mini").ainvoke(messages)
         
         # 解析LLM响应
         decision_data = None

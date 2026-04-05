@@ -55,7 +55,7 @@ async def sop_match_node(state: AgentState):
         HumanMessage(content=rewritten_query),
     ]
 
-    response = await mt_llm("gpt-4.1-mini").ainvoke(messages)
+    response = await get_gpt_model("gpt-4.1-mini").ainvoke(messages)
     intent = response.content.strip()
     
     if intent and intent in intent_dict:
