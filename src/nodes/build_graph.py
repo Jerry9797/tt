@@ -9,7 +9,7 @@ from langgraph.graph import END, StateGraph
 from src.config.mysql import get_connection_string
 from src.config.sop_loader import get_sop_loader
 from src.graph_state import AgentState
-from src.nodes.ask_human_node import ask_human
+from src.nodes.ask_human_node import ask_human_node
 from src.nodes.faq_retrieve_node import faq_retrieve_node
 from src.nodes.plan_nodes import (
     finalize_execution_node,
@@ -43,7 +43,7 @@ async def build_graph(init_mcp: bool = True):
 
     graph = StateGraph(AgentState)
     graph.add_node("query_rewrite_node", query_rewrite_node)
-    graph.add_node("ask_human", ask_human)
+    graph.add_node("ask_human_node", ask_human_node)
     graph.add_node("faq_retrieve_node", faq_retrieve_node)
     graph.add_node("sop_match_node", sop_match_node)
     graph.add_node("planning_node", planning_node)
@@ -54,19 +54,7 @@ async def build_graph(init_mcp: bool = True):
 
     graph.set_entry_point("query_rewrite_node")
 
-    def router_query_rewrite(state: AgentState):
-        if state.get("awaiting_user_input"):
-            return "ask_human"
-        return "faq_retrieve_node"
-
-    graph.add_conditional_edges(
-        "query_rewrite_node",
-        router_query_rewrite,
-        {
-            "ask_human": "ask_human",
-            "faq_retrieve_node": "faq_retrieve_node",
-        },
-    )
+    graph.add_edge("query_rewrite_node", "faq_retrieve_node")
     graph.add_edge("faq_retrieve_node", "sop_match_node")
 
     def router_plan(state: AgentState):

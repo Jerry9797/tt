@@ -1,7 +1,7 @@
 import operator
 
 from pydantic import BaseModel, Field
-from typing import Annotated, List, Literal, Optional, Required, TypedDict, Union
+from typing import Annotated, List, Optional, Required, TypedDict, Union
 from langchain_core.messages import AnyMessage
 from langgraph.graph.message import add_messages
 
@@ -11,11 +11,6 @@ from src.models.execution_result import PlanExecutionSummary, StepExecutionResul
 def overwrite(left, right):
     """LangGraph reducer: 对标量/单值字段始终以后一次更新覆盖前一次。"""
     return right
-
-
-# 只有这两个节点会主动发起人工澄清，因此恢复目标被限制成固定字面量，
-# 这样状态里不会出现随手写错节点名的隐性 bug。
-ResumeTarget = Literal["query_rewrite_node", "plan_executor_node"]
 
 
 class AgentState(TypedDict, total=False):
@@ -74,25 +69,14 @@ class AgentState(TypedDict, total=False):
     # 字面意思：整个执行过程的最终摘要。
     # 作用：把 step_results 汇总成面向接口和前端的总览信息，避免调用方自己再做二次聚合。
     execution_summary: Annotated[Optional[PlanExecutionSummary], overwrite]
-
-    # 中断态：只服务于 Human-in-the-Loop。
-    # `clarification_question`
-    # 字面意思：当前暂停时要问用户的问题。
-    # 作用：让 API/UI 能明确告诉用户“现在缺什么信息”。
-    clarification_question: Annotated[Optional[str], overwrite]
-    # `awaiting_user_input`
-    # 字面意思：图当前是否处于等待用户输入的状态。
-    # 作用：作为路由标记，让流程在 ask_human 和正常执行路径之间切换。
-    awaiting_user_input: Annotated[bool, overwrite]
-    # `resume_target`
-    # 字面意思：用户回复后应该恢复到的节点名。
-    # 作用：避免恢复时丢失上下文，确保继续执行到正确的节点。
-    resume_target: Annotated[Optional[ResumeTarget], overwrite]
-    # `resume_input`
-    # 字面意思：用户刚刚补充的那条输入。
-    # 作用：把澄清后的新信息显式传给恢复节点消费一次，避免只能从 messages 里反推。
-    resume_input: Annotated[Optional[str], overwrite]
-
+    # `human_question`
+    # 字面意思：当前等待用户补充的问题。
+    # 作用：由业务节点声明，统一交给 ask_human_node 触发中断。
+    human_question: Annotated[Optional[str], overwrite]
+    # `human_resume_node`
+    # 字面意思：用户回答后应回到的节点名。
+    # 作用：ask_human_node 恢复后据此跳回原业务节点。
+    human_resume_node: Annotated[Optional[str], overwrite]
     # 输出态：只表示最终面向用户的答案，不再复用为澄清问题。
     # `final_response`
     # 字面意思：最终生成给用户的回复文本。

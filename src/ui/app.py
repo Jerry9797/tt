@@ -290,7 +290,13 @@ with st.sidebar:
                     # 选择从哪个节点继续
                     as_node = st.selectbox(
                         "Continue from node",
-                        options=["query_rewrite_node", "faq_retrieve_node", "planning_node", "plan_executor_node"],
+                        options=[
+                            "query_rewrite_node",
+                            "faq_retrieve_node",
+                            "planning_node",
+                            "plan_executor_node",
+                            "ask_human_node",
+                        ],
                         help="选择从哪个节点继续执行"
                     )
                     
@@ -406,12 +412,18 @@ if prompt := st.chat_input("Input your query..."):
                                 progress_lines.extend([f"- {step}" for step in plan])
                                 progress_placeholder.markdown("**Progress**\n" + "\n".join(progress_lines))
 
+                        if node == "ask_human_node":
+                            progress_lines.append("- Waiting for user input")
+                            progress_placeholder.markdown("**Progress**\n" + "\n".join(progress_lines))
+
                         if node == "plan_executor_node":
                             for message in payload_data.get("messages", []):
                                 content = extract_message_text(message)
                                 if content.startswith("🔄 开始执行步骤"):
                                     progress_lines.append(f"- {content}")
                                 elif content.startswith("✅ 步骤"):
+                                    progress_lines.append(f"- {content}")
+                                elif content.startswith("⏸️ 步骤"):
                                     progress_lines.append(f"- {content}")
 
                             step_results = payload_data.get("step_results") or []

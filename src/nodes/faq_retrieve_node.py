@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 async def faq_retrieve_node(state: AgentState):
     rewritten_query = state.get("rewritten_query") or state.get("original_query")
-    if not rewritten_query or state.get("awaiting_user_input"):
+    if not rewritten_query:
         return {"faq_response": None}
 
     try:

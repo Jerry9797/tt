@@ -137,10 +137,8 @@ def serialize_execution_summary(summary: Any) -> Optional[Dict[str, Any]]:
 
 
 def build_chat_response(result: Dict[str, Any], request: ChatRequest, thread_id: str, status: str = "success") -> ChatResponse:
-    # 对外 API 继续保留 `response` 字段，但内部状态已经拆成：
-    # - `final_response`：真正的最终答案
-    # - `clarification_question`：需要用户补充时的问题
-    # 这里负责做兼容映射，避免前端/UI 需要跟着内部重构一起改。
+    # 对外 API 继续保留 `response` 字段。
+    # need_clarification 状态时，将 clarification_question 映射到 response 字段供前端展示。
     response_text = result.get("final_response") or result.get("response")
     if status == "need_clarification":
         response_text = result.get("clarification_question") or result.get("response")
@@ -174,8 +172,8 @@ def extract_interrupt_question(state_snapshot: Any) -> Optional[str]:
 def build_graph_input(request: ChatRequest) -> AgentState | Command:
     if request.resume_input:
         logger.info("Resuming interrupted graph execution")
-        # LangGraph 的 resume 机制会把这段字符串送回上次 interrupt 的位置，
-        # 再由 ask_human 节点写入 `resume_input`，交给目标节点消费。
+        # LangGraph 的 resume 机制：Command(resume=value) 会将 value 传回
+        # 上次 interrupt() 调用处，节点从头重新执行并从 interrupt() 拿到用户回答。
         return Command(resume=request.resume_input)
 
     return build_initial_state(request)

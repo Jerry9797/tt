@@ -11,7 +11,7 @@ from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.tools import BaseTool
 
-from src.config.llm import get_gpt_model, mt_llm
+from src.config.llm import get_gpt_model
 from src.config.sop_loader import get_sop_loader
 from src.constants import MAX_STEP_OUTPUT_LENGTH, MAX_OUTPUT_PREVIEW_LENGTH, MAX_REPLAN_SUMMARY_LENGTH, MAX_REPLAN_ERROR_LENGTH
 from src.graph_state import AgentState, Plan
@@ -90,27 +90,40 @@ async def planning_node(state: AgentState):
     }
 
 
-async def plan_executor_node(state: AgentState, tools: Optional[List[BaseTool]] = None):
-    """
-    执行当前 plan step。
+def _get_previous_results_context(state: AgentState) -> str:
+    previous_results = state.get("step_results", [])
+    if not previous_results:
+        return ""
+    return "\n".join([
+        f"步骤{i+1}: {r.step_description} -> {r.output_result or '无结果'}"
+        for i, r in enumerate(previous_results[-3:])
+    ])
 
-    状态协议：
-    - 普通执行时，从 `plan[current_step]` 读取当前任务。
-    - 恢复执行时，只通过 `resume_input` 判断，避免再依赖旧的布尔标记推断上下文。
-    - 真正完成步骤后才把 `StepExecutionResult` 追加进 `step_results`。
-    - 如果中途需要澄清，则只写入中断态并跳到 `ask_human`，不落半成品步骤结果。
-    """
+
+def _get_latest_human_clarification(state: AgentState) -> str:
+    original_query = state.get("original_query", "")
+    for msg in reversed(state.get("messages", [])):
+        if getattr(msg, "type", "") != "human":
+            continue
+        content = getattr(msg, "content", "")
+        if not isinstance(content, str):
+            continue
+        clarification = content.strip()
+        if clarification and clarification not in original_query:
+            return clarification
+    return ""
+
+
+async def plan_executor_node(state: AgentState, tools: Optional[List[BaseTool]] = None):
     plan = state.get("plan", [])
     current_step = state.get("current_step", 0)
-    
-    # 检查是否已完成所有步骤
+
     if current_step >= len(plan):
         logger.info("All plan steps completed, moving to finalization")
         return Command(goto="finalize_execution_node")
-    
+
     step_description = plan[current_step]
-    
-    # 初始化步骤执行结果
+
     step_result = StepExecutionResult(
         step_index=current_step,
         step_description=step_description,
@@ -118,36 +131,16 @@ async def plan_executor_node(state: AgentState, tools: Optional[List[BaseTool]] 
         start_time=datetime.now()
     )
 
-    
-    # 当前轮次新增的 AI 提示消息会被拼进 prompt，同时也会回写消息历史。
     messages_to_add = []
-    
-    # ⭐ 使用 resume_input 判断是否处于中断恢复状态
-    user_input = state.get("resume_input")
-    is_resuming = bool(user_input)
+    start_message = AIMessage(
+        content=f"🔄 开始执行步骤 {current_step + 1}/{len(plan)}: {step_description}"
+    )
+    messages_to_add.append(start_message)
 
-    if is_resuming:
-        logger.info("Resuming plan execution for step %s", current_step + 1)
-        # 恢复执行时，用一条显式 AIMessage 把"刚收到过补充信息"写进上下文，
-        # 这样执行 prompt 里能读到状态转换，而不只是孤立的一句用户输入。
-        resume_message = AIMessage(
-            content=f"▶️ 收到您的回复，继续执行步骤 {current_step + 1}"
-        )
-        messages_to_add.append(resume_message)
-    
-    if not is_resuming:
-        # 首次执行此步骤，添加开始消息
-        start_message = AIMessage(
-            content=f"🔄 开始执行步骤 {current_step + 1}/{len(plan)}: {step_description}"
-        )
-        messages_to_add.append(start_message)
-    
     logger.info("Executing step %s/%s: %s", current_step + 1, len(plan), step_description)
-    
-    # 准备Agent系统提示（传递当前轮次的新消息）
+
     system_prompt = build_executor_prompt(state, current_step, step_description, messages_to_add)
-    
-    # ⭐ 使用预合并的工具（由 build_graph 通过 partial 注入），兜底回退到运行时组装
+
     if tools is not None:
         all_tools = tools
     else:
@@ -156,22 +149,12 @@ async def plan_executor_node(state: AgentState, tools: Optional[List[BaseTool]] 
         all_tools = ALL_TOOLS + mcp_tools
     logger.info("Using %s tools for step %s", len(all_tools), current_step + 1)
 
-    # ⭐ 使用 bind_tools 替代 create_agent，固定 2 次 LLM 调用
     llm = get_gpt_model("gpt-4.1-mini").bind_tools(all_tools)
     tool_map = {t.name: t for t in all_tools}
-
-    # 构建输入消息
     input_messages = [SystemMessage(content=system_prompt)]
-    if user_input:
-        input_messages.append(HumanMessage(content=user_input))
-
-    # 执行（异步）
     start_exec = time.time()
-
-    # 第1次调用：LLM 决定调哪些工具
     ai_response = await llm.ainvoke(input_messages)
 
-    # 执行工具调用
     tool_messages = []
     if ai_response.tool_calls:
         for tc in ai_response.tool_calls:
@@ -188,7 +171,6 @@ async def plan_executor_node(state: AgentState, tools: Optional[List[BaseTool]] 
                 tool_call_id=tc["id"],
             ))
 
-    # 第2次调用：LLM 汇总工具结果生成最终输出
     if tool_messages:
         final_response = await llm.ainvoke(
             input_messages + [ai_response] + tool_messages
@@ -197,7 +179,6 @@ async def plan_executor_node(state: AgentState, tools: Optional[List[BaseTool]] 
         final_response = ai_response
 
     exec_duration = (time.time() - start_exec) * 1000
-    # ⭐ 提取 Token Usage（累加两次 LLM 调用）
     token_usage = _extract_token_usage(ai_response)
     if tool_messages:
         token_usage.add(_extract_token_usage(final_response))
@@ -210,43 +191,23 @@ async def plan_executor_node(state: AgentState, tools: Optional[List[BaseTool]] 
         )
 
     output = final_response.content
-    
-    # ⭐ 检查是否需要询问用户
     ask_match = _ASK_HUMAN_RE.search(output)
     if ask_match:
-        logger.info("Step %s requires clarification", current_step + 1)
-
-        # 提取问题（Agent应该在输出中说明需要什么信息）
-        question = ask_match.group(1).strip()
-        if not question:
-            question = "请提供执行此步骤所需的信息"
-        
-        # 更新步骤状态为需要澄清
-        # step_result.status = StepStatus.NEED_CLARIFICATION
-        # step_result.interrupt_question = question
-        # step_result.end_time = datetime.now()
-        # step_result.duration_ms = exec_duration
-        
-        # 这里不把 RUNNING 的 step_result 落到 `step_results`。
-        # 否则恢复后会同时存在"半成品 running 结果"和"最终 success 结果"，
-        # 导致 execution summary 的统计失真。
-        interrupt_message = AIMessage(
-            content=f"⏸️ 步骤 {current_step + 1} 需要更多信息\n{question}"
+        question = ask_match.group(1).strip() or "请提供执行此步骤所需的信息"
+        logger.info("Step %s requires clarification: %s", current_step + 1, question)
+        ask_message = AIMessage(
+            content=f"⏸️ 步骤 {current_step + 1} 需要补充信息\n{question}"
         )
-        messages_to_add.append(interrupt_message)
-        
-        # ⭐ 中断：不增加current_step，保持在当前步骤
-        return Command(goto="ask_human", update={
-            "clarification_question": question,
-            "resume_target": "plan_executor_node",
-            "awaiting_user_input": True,
-            "resume_input": None,
-            "messages": messages_to_add,
-            # current_step 不变！用户回复后会重新执行这一步
-        })
-    
-    # 正常执行完成
-    # 提取工具调用信息
+        messages_to_add.append(ask_message)
+        return Command(
+            goto="ask_human_node",
+            update={
+                "messages": messages_to_add,
+                "human_question": question,
+                "human_resume_node": "plan_executor_node",
+            },
+        )
+
     tool_calls = []
     if ai_response.tool_calls:
         for tc in ai_response.tool_calls:
@@ -254,8 +215,7 @@ async def plan_executor_node(state: AgentState, tools: Optional[List[BaseTool]] 
                 tool_name=tc.get("name", "unknown"),
                 arguments=tc.get("args", {}),
             ))
-    
-    # 更新结果
+
     step_result.status = StepStatus.SUCCESS
     step_result.end_time = datetime.now()
     step_result.duration_ms = exec_duration
@@ -263,28 +223,20 @@ async def plan_executor_node(state: AgentState, tools: Optional[List[BaseTool]] 
     step_result.agent_response = str(output)
     step_result.output_result = output[:MAX_STEP_OUTPUT_LENGTH] if output else ""
     step_result.tool_calls = tool_calls
-    
-    # ⭐ 打印成功日志和工具结果
+
     logger.info("Step %s completed in %.2fms", current_step + 1, exec_duration)
 
-    # 📝 添加成功消息
     result_summary = step_result.output_result[:MAX_OUTPUT_PREVIEW_LENGTH] if step_result.output_result else "执行完成"
     tools_used = f" (使用了{len(tool_calls)}个工具)" if tool_calls else ""
-    
     success_message = AIMessage(
         content=f"✅ 步骤 {current_step + 1} 完成{tools_used}\n{result_summary}"
     )
     messages_to_add.append(success_message)
-    
-    # 只有真正执行成功后才推进 `current_step`，并清理可能残留的中断态字段。
+
     return {
         "current_step": current_step + 1,
         "step_results": [step_result],
         "messages": messages_to_add,
-        "awaiting_user_input": False,
-        "clarification_question": None,
-        "resume_target": None,
-        "resume_input": None,
     }
 
 
