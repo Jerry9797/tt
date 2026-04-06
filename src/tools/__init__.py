@@ -36,6 +36,7 @@ from .diagnostic_tools import (
     query_merchant_exposure,
     query_rule_engine_config,
 )
+from .human_tools import ask_human
 
 # ⭐ 用户日志工具（新增）
 from .user_log_tool import (
@@ -76,6 +77,7 @@ __all__ = [
     'query_request_related_assets',
     'query_merchant_exposure',
     'query_rule_engine_config',
+    'ask_human',
     
     # ⭐ 用户日志工具
     'search_user_access_history',

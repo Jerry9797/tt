@@ -1,6 +1,5 @@
 import json
 import logging
-import re
 import time
 from datetime import datetime
 from typing import List, Optional
@@ -17,6 +16,7 @@ from src.constants import MAX_STEP_OUTPUT_LENGTH, MAX_OUTPUT_PREVIEW_LENGTH, MAX
 from src.graph_state import AgentState, Plan
 from src.tools import (
     ALL_TOOLS,
+    ask_human,
 )
 from src.models.execution_result import (
     StepExecutionResult,
@@ -28,7 +28,6 @@ from src.models.execution_result import (
 
 logger = logging.getLogger(__name__)
 sop_loader = get_sop_loader()
-_ASK_HUMAN_RE = re.compile(r"^\[ASK_HUMAN\]\s*:?\s*(.*)", re.MULTILINE)
 
 
 def _extract_token_usage(response) -> TokenUsage:
@@ -142,11 +141,11 @@ async def plan_executor_node(state: AgentState, tools: Optional[List[BaseTool]] 
     system_prompt = build_executor_prompt(state, current_step, step_description, messages_to_add)
 
     if tools is not None:
-        all_tools = tools
+        all_tools = list(tools) + [ask_human]
     else:
         from src.mcp import get_mcp_manager
         mcp_tools = get_mcp_manager().get_all_tools()
-        all_tools = ALL_TOOLS + mcp_tools
+        all_tools = ALL_TOOLS + mcp_tools + [ask_human]
     logger.info("Using %s tools for step %s", len(all_tools), current_step + 1)
 
     llm = get_gpt_model("gpt-4.1-mini").bind_tools(all_tools)
@@ -155,9 +154,37 @@ async def plan_executor_node(state: AgentState, tools: Optional[List[BaseTool]] 
     start_exec = time.time()
     ai_response = await llm.ainvoke(input_messages)
 
+    ask_human_call = None
+    if ai_response.tool_calls:
+        for tc in ai_response.tool_calls:
+            if tc["name"] == ask_human.name:
+                ask_human_call = tc
+                break
+
+    if ask_human_call:
+        question = (
+            ask_human_call.get("args", {}).get("question")
+            or "请提供执行此步骤所需的信息"
+        )
+        logger.info("Step %s requires clarification via ask_human tool: %s", current_step + 1, question)
+        ask_message = AIMessage(
+            content=f"⏸️ 步骤 {current_step + 1} 需要补充信息\n{question}"
+        )
+        messages_to_add.append(ask_message)
+        return Command(
+            goto="ask_human_node",
+            update={
+                "messages": messages_to_add,
+                "human_question": question,
+                "human_resume_node": "plan_executor_node",
+            },
+        )
+
     tool_messages = []
     if ai_response.tool_calls:
         for tc in ai_response.tool_calls:
+            if tc["name"] == ask_human.name:
+                continue
             tool_func = tool_map.get(tc["name"])
             if tool_func:
                 try:
@@ -191,26 +218,12 @@ async def plan_executor_node(state: AgentState, tools: Optional[List[BaseTool]] 
         )
 
     output = final_response.content
-    ask_match = _ASK_HUMAN_RE.search(output)
-    if ask_match:
-        question = ask_match.group(1).strip() or "请提供执行此步骤所需的信息"
-        logger.info("Step %s requires clarification: %s", current_step + 1, question)
-        ask_message = AIMessage(
-            content=f"⏸️ 步骤 {current_step + 1} 需要补充信息\n{question}"
-        )
-        messages_to_add.append(ask_message)
-        return Command(
-            goto="ask_human_node",
-            update={
-                "messages": messages_to_add,
-                "human_question": question,
-                "human_resume_node": "plan_executor_node",
-            },
-        )
 
     tool_calls = []
     if ai_response.tool_calls:
         for tc in ai_response.tool_calls:
+            if tc["name"] == ask_human.name:
+                continue
             tool_calls.append(ToolCall(
                 tool_name=tc.get("name", "unknown"),
                 arguments=tc.get("args", {}),

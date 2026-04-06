@@ -139,8 +139,10 @@ class HumanInTheLoopFlowTests(unittest.IsolatedAsyncioTestCase):
         interrupt_mock.assert_called_once_with("请补充商户ID")
 
     async def test_plan_executor_routes_to_ask_human(self):
-        mock_llm_response = AIMessage(content="[ASK_HUMAN] 请补充商户ID")
-        mock_llm_response.tool_calls = []
+        mock_llm_response = AIMessage(content="")
+        mock_llm_response.tool_calls = [
+            {"name": "ask_human", "args": {"question": "请补充商户ID"}, "id": "tool_ask_human_1"}
+        ]
         mock_llm = AsyncMock()
         mock_llm.bind_tools = Mock(return_value=mock_llm)
         mock_llm.ainvoke = AsyncMock(return_value=mock_llm_response)
@@ -163,6 +165,40 @@ class HumanInTheLoopFlowTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(command.update["human_resume_node"], "plan_executor_node")
         self.assertNotIn("step_results", command.update)
         self.assertTrue(any(msg.content.startswith("⏸️ 步骤") for msg in command.update["messages"]))
+
+    async def test_plan_executor_skips_ask_human_tool_in_tool_results(self):
+        mock_ai_response = AIMessage(content="")
+        mock_ai_response.tool_calls = [
+            {"name": "lookup", "args": {"id": 1}, "id": "tc1"},
+            {"name": "ask_human", "args": {"question": "请补充商户ID"}, "id": "tc2"},
+        ]
+        mock_final_response = AIMessage(content="处理完成")
+        mock_final_response.tool_calls = []
+
+        mock_llm = AsyncMock()
+        mock_llm.bind_tools = Mock(return_value=mock_llm)
+        mock_llm.ainvoke = AsyncMock(side_effect=[mock_ai_response, mock_final_response])
+
+        mock_tool = AsyncMock()
+        mock_tool.name = "lookup"
+        mock_tool.ainvoke = AsyncMock(return_value="result")
+
+        with patch("src.nodes.plan_nodes.get_gpt_model", return_value=mock_llm), \
+             patch("src.prompt.prompt_loader.get_prompt", return_value="{query} {step_index} {task} {context} {chat_history}"):
+            command = await plan_executor_node(
+                {
+                    "original_query": "查询商户",
+                    "rewritten_query": "查询商户",
+                    "messages": [],
+                    "plan": ["检查召回"],
+                    "current_step": 0,
+                },
+                tools=[mock_tool],
+            )
+
+        self.assertIsInstance(command, Command)
+        self.assertEqual(command.goto, "ask_human_node")
+        mock_tool.ainvoke.assert_not_called()
 
     async def test_plan_executor_accumulates_token_usage(self):
         mock_ai_response = AIMessage(content="调用工具")
