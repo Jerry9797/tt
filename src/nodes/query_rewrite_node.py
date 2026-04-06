@@ -65,5 +65,4 @@ async def query_rewrite_node(state: AgentState):
 
     return {
         "rewritten_query": ret.get("rewritten_query", original_query),
-        "keywords": ret.get("keywords", []),
     }

@@ -59,7 +59,8 @@ async def response_generator_node(state: AgentState) -> dict:
 
 
 def build_response_generation_payload(state: AgentState) -> dict:
-    query = state.get("original_query") or state.get("rewritten_query", "")
+    # 回答用户原始问题，original_query 是 Required 字段，始终可用
+    query = state.get("original_query", "")
     intent = state.get("intent", "未知")
     step_results = state.get("step_results", [])
 

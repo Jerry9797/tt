@@ -53,12 +53,8 @@ class AgentState(TypedDict, total=False):
     faq_response: Annotated[Optional[str], overwrite]
     # `intent`
     # 字面意思：识别出的业务意图标签。
-    # 作用：告诉后续节点“这类问题属于什么场景”，用于选 SOP、选 prompt 或统计分类。
+    # 作用：告诉后续节点”这类问题属于什么场景”，用于选 SOP、选 prompt 或统计分类。
     intent: Annotated[Optional[str], overwrite]
-    # `keywords`
-    # 字面意思：从 query rewrite 提取出的关键词。
-    # 作用：辅助检索增强，也方便调试时观察模型抓取了哪些核心信息。
-    keywords: Annotated[List[str], overwrite]
 
     # 执行态：描述 plan 执行过程及其结构化产物。
     # `step_results`

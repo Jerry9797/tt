@@ -1,13 +1,14 @@
 import logging
 
 from src.utils.qdrant_utils import qdrant_select
+from src.utils.state_utils import get_effective_query
 from src.graph_state import AgentState
 
 logger = logging.getLogger(__name__)
 
 
 async def faq_retrieve_node(state: AgentState):
-    rewritten_query = state.get("rewritten_query") or state.get("original_query")
+    rewritten_query = get_effective_query(state)
     if not rewritten_query:
         return {"faq_response": None}
 
