@@ -13,11 +13,40 @@ MYSQL_USER = os.getenv("MYSQL_USER", "")
 MYSQL_PASSWORD = os.getenv("MYSQL_PASSWORD", "")
 MYSQL_DATABASE = os.getenv("MYSQL_DATABASE", "")
 
+_pool = None
+
+
+def _get_pool():
+    global _pool
+    if _pool is None:
+        try:
+            from dbutils.pooled_db import PooledDB
+            _pool = PooledDB(
+                creator=pymysql,
+                maxconnections=20,
+                mincached=2,
+                host=MYSQL_HOST,
+                port=MYSQL_PORT,
+                user=MYSQL_USER,
+                password=MYSQL_PASSWORD,
+                database=MYSQL_DATABASE,
+                cursorclass=DictCursor,
+                autocommit=True,
+            )
+        except ImportError:
+            # dbutils 未安装时降级为每次新建连接（兼容旧环境）
+            _pool = None
+    return _pool
+
+
 def get_connection():
     """
-    Get a pymysql connection.
+    Get a pymysql connection from pool (if available) or create a new one.
     Remember to close the connection after use.
     """
+    pool = _get_pool()
+    if pool is not None:
+        return pool.connection()
     return pymysql.connect(
         host=MYSQL_HOST,
         port=MYSQL_PORT,
@@ -25,7 +54,7 @@ def get_connection():
         password=MYSQL_PASSWORD,
         database=MYSQL_DATABASE,
         cursorclass=DictCursor,
-        autocommit=True  # Important for LangGraph checkpointers
+        autocommit=True,
     )
 
 def get_connection_params():

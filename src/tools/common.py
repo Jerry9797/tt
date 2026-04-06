@@ -1,14 +1,4 @@
-from datetime import datetime
+# get_current_time 已移至 trace_tools.py，此文件保留为空以兼容旧导入
+from src.tools.trace_tools import get_current_time
 
-from langchain_core.tools import tool
-
-
-@tool
-def get_current_time() -> str:
-    """
-    获取当前时间（用于时间相关查询）
-
-    Returns:
-        当前时间字符串，格式：2024-12-24 12:30:00
-    """
-    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+__all__ = ["get_current_time"]

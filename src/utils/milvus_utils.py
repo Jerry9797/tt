@@ -1,8 +1,12 @@
+import os
 from pymilvus import MilvusClient, DataType
+from dotenv import load_dotenv
+
+load_dotenv()
 
 client = MilvusClient(
-    uri="http://23.91.97.241:19530",
-    token=""
+    uri=os.environ.get("MILVUS_URI", "http://localhost:19530"),
+    token=os.environ.get("MILVUS_TOKEN", "")
 )
 
 schema = MilvusClient.create_schema(

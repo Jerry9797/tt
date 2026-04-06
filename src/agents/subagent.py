@@ -12,13 +12,13 @@ result = await run_subagent({
 ```
 """
 
+import logging
 from typing import Dict, List, Optional, Any, Callable
 from pydantic import BaseModel, Field
 from langchain_core.tools import tool, BaseTool
-from langchain.agents import create_react_agent, AgentExecutor
-from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import SystemMessage, HumanMessage
-import asyncio
+
+logger = logging.getLogger(__name__)
 
 
 # ============================================================================
@@ -60,7 +60,7 @@ def get_tools_by_names(names: List[str]) -> List[BaseTool]:
         if tool:
             tools.append(tool)
         else:
-            print(f"[SubAgent] 警告: 工具 '{name}' 未注册")
+            logger.warning(f"[SubAgent] 警告: 工具 '{name}' 未注册")
     return tools
 
 
@@ -83,7 +83,7 @@ class GenericSubAgent:
     - 工具隔离: 每个SubAgent只能使用指定的工具集
     """
     
-    def __init__(self, llm=None):
+    def __init__(self, llm: Optional[Any] = None):
         """
         初始化SubAgent
         
@@ -91,8 +91,8 @@ class GenericSubAgent:
             llm: 语言模型实例，默认使用q_max
         """
         if llm is None:
-            from src.config.llm import q_max
-            self.llm = q_max
+            from src.config.llm import get_gpt_model
+            self.llm = get_gpt_model()
         else:
             self.llm = llm
     
@@ -142,11 +142,7 @@ class GenericSubAgent:
         """
         from langchain.agents import create_agent
         
-        print(f"\n{'='*60}")
-        print(f"[SubAgent] 启动")
-        print(f"  任务: {config.task}")
-        print(f"  工具: {config.tools}")
-        print(f"{'='*60}\n")
+        logger.info(f"[SubAgent] 启动 | 任务: {config.task} | 工具: {config.tools}")
         
         # 1. 动态加载工具
         tools = get_tools_by_names(config.tools)
@@ -158,7 +154,7 @@ class GenericSubAgent:
                 "error": f"没有可用的工具。请求的工具: {config.tools}, 已注册: {list_registered_tools()}"
             }
         
-        print(f"[SubAgent] 已加载 {len(tools)} 个工具: {[t.name for t in tools]}")
+        logger.info(f"[SubAgent] 已加载 {len(tools)} 个工具: {[t.name for t in tools]}")
         
         # 2. 构建Agent
         system_prompt = self._build_system_prompt(config)
@@ -170,19 +166,18 @@ class GenericSubAgent:
                 tools=tools,
             )
             
-            # 3. 执行
-            result = await agent.ainvoke({
-                "messages": [HumanMessage(content=config.task)]
-            })
+            # 3. 执行（recursion_limit 控制最大迭代轮数）
+            result = await agent.ainvoke(
+                {"messages": [HumanMessage(content=config.task)]},
+                config={"recursion_limit": config.max_iterations * 2 + 1},
+            )
             
             # 4. 提取结果
             output = ""
             if "messages" in result and result["messages"]:
                 output = result["messages"][-1].content
             
-            print(f"\n{'='*60}")
-            print(f"[SubAgent] 完成")
-            print(f"{'='*60}\n")
+            logger.info("[SubAgent] 完成")
             
             return {
                 "success": True,
@@ -193,12 +188,14 @@ class GenericSubAgent:
             
         except Exception as e:
             import traceback
-            traceback.print_exc()
+            error_trace = traceback.format_exc()
+            logger.error(f"[SubAgent] 执行失败:\n{error_trace}")
             return {
                 "success": False,
                 "result": None,
                 "iterations": 0,
-                "error": str(e)
+                "error": str(e),
+                "traceback": error_trace,
             }
 
 

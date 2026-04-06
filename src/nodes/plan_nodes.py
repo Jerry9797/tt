@@ -3,14 +3,17 @@ import logging
 import re
 import time
 from datetime import datetime
+from typing import List, Optional
 
 from langgraph.types import Command
 from langchain_core.messages import SystemMessage, AIMessage, HumanMessage, ToolMessage
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.tools import BaseTool
 
 from src.config.llm import get_gpt_model, mt_llm
 from src.config.sop_loader import get_sop_loader
+from src.constants import MAX_STEP_OUTPUT_LENGTH, MAX_OUTPUT_PREVIEW_LENGTH, MAX_REPLAN_SUMMARY_LENGTH, MAX_REPLAN_ERROR_LENGTH
 from src.graph_state import AgentState, Plan
 from src.tools import (
     ALL_TOOLS,
@@ -62,11 +65,16 @@ async def planning_node(state: AgentState):
     ])
     prompt = ChatPromptTemplate.from_messages(plan_messages)
     chain = prompt | get_gpt_model("gpt-4.1-mini") | plan_parser
-    try:
-        result = await chain.ainvoke({})
-    except Exception:
-        logger.warning("Plan parsing failed, retrying once")
-        result = await chain.ainvoke({})
+    _MAX_PLAN_RETRIES = 2
+    result = None
+    for attempt in range(_MAX_PLAN_RETRIES):
+        try:
+            result = await chain.ainvoke({})
+            break
+        except Exception as e:
+            logger.warning("Plan parsing failed (attempt %s/%s): %s", attempt + 1, _MAX_PLAN_RETRIES, e)
+            if attempt == _MAX_PLAN_RETRIES - 1:
+                result = {"steps": [f"直接回答用户问题: {rewritten_query}"]}
     steps = result.get('steps', [])
     
     # 📝 添加计划生成消息
@@ -82,7 +90,7 @@ async def planning_node(state: AgentState):
     }
 
 
-async def plan_executor_node(state: AgentState, tools: list = None):
+async def plan_executor_node(state: AgentState, tools: Optional[List[BaseTool]] = None):
     """
     执行当前 plan step。
 
@@ -253,14 +261,14 @@ async def plan_executor_node(state: AgentState, tools: list = None):
     step_result.duration_ms = exec_duration
     step_result.token_usage = token_usage
     step_result.agent_response = str(output)
-    step_result.output_result = output[:500] if output else ""
+    step_result.output_result = output[:MAX_STEP_OUTPUT_LENGTH] if output else ""
     step_result.tool_calls = tool_calls
     
     # ⭐ 打印成功日志和工具结果
     logger.info("Step %s completed in %.2fms", current_step + 1, exec_duration)
 
     # 📝 添加成功消息
-    result_summary = step_result.output_result[:200] if step_result.output_result else "执行完成"
+    result_summary = step_result.output_result[:MAX_OUTPUT_PREVIEW_LENGTH] if step_result.output_result else "执行完成"
     tools_used = f" (使用了{len(tool_calls)}个工具)" if tool_calls else ""
     
     success_message = AIMessage(
@@ -447,9 +455,9 @@ async def replan_node(state: AgentState) -> dict:
         status = "✅ 成功" if result.status == StepStatus.SUCCESS else "❌ 失败"
         summary = f"{status} 步骤{result.step_index + 1}: {result.step_description}"
         if result.output_result:
-            summary += f"\n   结果: {result.output_result[:150]}"
+            summary += f"\n   结果: {result.output_result[:MAX_REPLAN_SUMMARY_LENGTH]}"
         if result.error_message:
-            summary += f"\n   错误: {result.error_message[:100]}"
+            summary += f"\n   错误: {result.error_message[:MAX_REPLAN_ERROR_LENGTH]}"
         completed_steps_summary.append(summary)
     
     # 剩余步骤

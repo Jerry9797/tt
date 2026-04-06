@@ -3,10 +3,13 @@ SOP配置加载器
 从YAML文件加载完整的场景配置（steps + tools + prompt）
 """
 
+import logging
 import yaml
 import os
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -47,13 +50,13 @@ class SOPConfigLoader:
                 raw_config = yaml.safe_load(f)
             
             if not raw_config:
-                print(f"[SOPLoader] Warning: Empty config file")
+                logger.warning("Empty config file: %s", self.config_path)
                 return
-            
+
             for key, config in raw_config.items():
                 if not isinstance(config, dict):
                     continue
-                
+
                 self.sops[key] = SOPConfig(
                     key=key,
                     name=config.get('name', key),
@@ -65,15 +68,13 @@ class SOPConfigLoader:
                     planning_prompt=config.get('planning_prompt', ''),
                     metrics=config.get('metrics', {})
                 )
-            
-            print(f"[SOPLoader] Loaded {len(self.sops)} SOP configurations")
-            
+
+            logger.info("Loaded %s SOP configurations", len(self.sops))
+
         except FileNotFoundError:
-            print(f"[SOPLoader] Error: Config file not found: {self.config_path}")
+            logger.error("Config file not found: %s", self.config_path)
         except Exception as e:
-            print(f"[SOPLoader] Error loading config: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.exception("Error loading SOP config: %s", e)
     
     def get_sop(self, key: str) -> Optional[SOPConfig]:
         """获取指定SOP配置"""

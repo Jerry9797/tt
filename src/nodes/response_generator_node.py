@@ -13,6 +13,7 @@ from langchain_core.messages import AIMessage
 from langchain_core.prompts import ChatPromptTemplate
 
 from src.config.llm import get_gpt_model, mt_llm
+from src.constants import MAX_OUTPUT_PREVIEW_LENGTH, MAX_AGENT_RESPONSE_PREVIEW
 from src.graph_state import AgentState
 from src.prompt.prompt_loader import get_prompt
 
@@ -91,8 +92,8 @@ def build_steps_summary(step_results: list) -> str:
         # 提取输出结果（截取前200字符）
         output_preview = ""
         if hasattr(result, 'output_result') and result.output_result:
-            output_preview = result.output_result[:200]
-            if len(result.output_result) > 200:
+            output_preview = result.output_result[:MAX_OUTPUT_PREVIEW_LENGTH]
+            if len(result.output_result) > MAX_OUTPUT_PREVIEW_LENGTH:
                 output_preview += "..."
         else:
             output_preview = "无结果输出"
@@ -122,8 +123,8 @@ def extract_tool_results(step_results: list) -> str:
         # 提取 agent_response（包含工具调用信息）
         if hasattr(result, 'agent_response') and result.agent_response:
             # 截取前300字符作为关键信息
-            response_preview = result.agent_response[:300]
-            if len(result.agent_response) > 300:
+            response_preview = result.agent_response[:MAX_AGENT_RESPONSE_PREVIEW]
+            if len(result.agent_response) > MAX_AGENT_RESPONSE_PREVIEW:
                 response_preview += "..."
             
             tool_calls_summary.append(

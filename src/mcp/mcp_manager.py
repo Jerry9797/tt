@@ -3,6 +3,7 @@ MCP 工具管理器
 负责管理 MCP 服务器连接、工具加载和调用
 """
 import asyncio
+import logging
 from typing import Dict, List, Optional
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
@@ -10,6 +11,8 @@ from langchain_mcp_adapters.tools import load_mcp_tools
 from langchain_core.tools import BaseTool
 
 from src.mcp.mcp_config import load_mcp_config, get_enabled_servers, MCPServerConfig
+
+logger = logging.getLogger(__name__)
 
 
 class MCPToolManager:
@@ -48,7 +51,7 @@ class MCPToolManager:
         session = None
 
         try:
-            print(f"[MCP Manager] 正在连接到 {server_name} ({url})...")
+            logger.info("正在连接到 %s (%s)...", server_name, url)
             
             # 使用 streamable_http_client 创建连接
             stream_context = streamable_http_client(url=url)
@@ -67,7 +70,7 @@ class MCPToolManager:
             # 保存会话
             self._sessions[server_name] = session
             
-            print(f"[MCP Manager] ✅ 成功连接到 {server_name}")
+            logger.info("成功连接到 %s", server_name)
             return True
         
         except BaseException as e:
@@ -75,14 +78,14 @@ class MCPToolManager:
             if session is not None:
                 try:
                     await session.__aexit__(type(e), e, e.__traceback__)
-                except Exception:
-                    pass
+                except Exception as cleanup_err:
+                    logger.warning("Session cleanup failed for %s: %s", server_name, cleanup_err)
 
             if stream_context is not None:
                 try:
                     await stream_context.__aexit__(type(e), e, e.__traceback__)
-                except Exception:
-                    pass
+                except Exception as cleanup_err:
+                    logger.warning("Stream context cleanup failed for %s: %s", server_name, cleanup_err)
 
             self._stream_contexts.pop(server_name, None)
             self._sessions.pop(server_name, None)
@@ -90,9 +93,9 @@ class MCPToolManager:
             # Handle BaseExceptionGroup from anyio/httpx
             error_msg = str(e)
             if "ConnectError" in error_msg or "connection attempts failed" in error_msg:
-                 print(f"[MCP Manager] ❌ 连接 {server_name} 失败: 无法连接到服务器 (Connection Refused)")
+                logger.warning("连接 %s 失败: 无法连接到服务器 (Connection Refused)", server_name)
             else:
-                 print(f"[MCP Manager] ❌ 连接 {server_name} 失败: {e}")
+                logger.warning("连接 %s 失败: %s", server_name, e)
             return False
     
     async def load_tools(self, server_name: str) -> List[BaseTool]:
@@ -106,7 +109,7 @@ class MCPToolManager:
             List[BaseTool]: 加载的工具列表
         """
         if server_name not in self._sessions:
-            print(f"[MCP Manager] 服务器 {server_name} 未连接")
+            logger.warning("服务器 %s 未连接", server_name)
             return []
         
         try:
@@ -117,15 +120,15 @@ class MCPToolManager:
             
             # 保存工具
             self._tools[server_name] = tools
-            
-            print(f"[MCP Manager] ✅ 从 {server_name} 加载了 {len(tools)} 个工具:")
+
+            logger.info("从 %s 加载了 %s 个工具", server_name, len(tools))
             for tool in tools:
-                print(f"  • {tool.name}: {tool.description}")
-            
+                logger.debug("  • %s: %s", tool.name, tool.description)
+
             return tools
-        
+
         except Exception as e:
-            print(f"[MCP Manager] ❌ 从 {server_name} 加载工具失败: {e}")
+            logger.error("从 %s 加载工具失败: %s", server_name, e)
             return []
     
     def get_all_tools(self) -> List[BaseTool]:
@@ -174,9 +177,9 @@ class MCPToolManager:
                 if server_name in self._tools:
                     del self._tools[server_name]
                 
-                print(f"[MCP Manager] 已断开 {server_name}")
+                logger.info("已断开 %s", server_name)
             except Exception as e:
-                print(f"[MCP Manager] 断开 {server_name} 时出错: {e}")
+                logger.warning("断开 %s 时出错: %s", server_name, e)
     
     async def disconnect_all(self):
         """断开所有连接"""
@@ -219,10 +222,10 @@ async def init_mcp_manager(config_path: str = None) -> MCPToolManager:
         enabled_servers = get_enabled_servers(config)
         
         if not enabled_servers:
-            print("[MCP Manager] 没有启用的 MCP 服务器")
+            logger.info("没有启用的 MCP 服务器")
             return _manager
-        
-        print(f"[MCP Manager] 开始初始化，共 {len(enabled_servers)} 个服务器")
+
+        logger.info("开始初始化，共 %s 个服务器", len(enabled_servers))
         
         # 连接所有启用的服务器
         for server_config in enabled_servers:
@@ -231,8 +234,11 @@ async def init_mcp_manager(config_path: str = None) -> MCPToolManager:
                 # 加载工具
                 await _manager.load_tools(server_config.name)
         
-        print(f"[MCP Manager] 初始化完成，已连接 {len(_manager.get_connected_servers())} 个服务器，"
-              f"共 {_manager.get_tool_count()} 个工具")
+        logger.info(
+            "初始化完成，已连接 %s 个服务器，共 %s 个工具",
+            len(_manager.get_connected_servers()),
+            _manager.get_tool_count(),
+        )
         
         return _manager
 
@@ -249,7 +255,7 @@ def get_mcp_manager() -> MCPToolManager:
     global _manager
     
     if _manager is None:
-        print("[MCP Manager] 警告：管理器未初始化，返回空管理器")
+        logger.warning("管理器未初始化，返回空管理器")
         _manager = MCPToolManager()
     
     return _manager
@@ -261,8 +267,8 @@ async def cleanup_mcp_manager():
     
     if _manager is not None:
         await _manager.disconnect_all()
-        print("[MCP Manager] 已清理所有连接")
-        _manager = None # Ensure the global manager is reset after cleanup
+        logger.info("已清理所有连接")
+        _manager = None
 
 
 # 测试代码

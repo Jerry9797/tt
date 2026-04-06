@@ -1,6 +1,6 @@
 import os
 
-from langchain_community.embeddings import DashScopeEmbeddings,zhipuai
+from langchain_community.embeddings import DashScopeEmbeddings
 from dotenv import load_dotenv
 from langchain_qdrant import QdrantVectorStore
 

@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 from typing import Any, AsyncIterator, Dict, Iterable, List, Optional, Sequence, Tuple, Union
@@ -107,8 +108,8 @@ class MySQLStore(BaseStore):
 
     async def abatch(self, ops: Iterable[Op]) -> List[Any]:
         """
-        Async batch operation.
-        Since we are using synchronous pymysql, we just call self.batch() directly.
-        For a true async integration, we would need to use aiomysql.
+        Async batch operation using thread executor to avoid blocking the event loop.
         """
-        return self.batch(ops)
+        ops_list = list(ops)
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self.batch, ops_list)
