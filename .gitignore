@@ -4,3 +4,5 @@ __pycache__/
 *.xml
 ../fk_job/.env_ccc
 .env_copy
+.claude/skills/gstack/
+.claude/skills/
