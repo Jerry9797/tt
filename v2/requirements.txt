@@ -1,0 +1,6 @@
+# v2 新增依赖（在根目录 requirements.txt 基础上追加）
+claude-code-sdk==0.0.25
+opentelemetry-api==1.33.0
+opentelemetry-sdk==1.33.0
+opentelemetry-exporter-otlp-proto-http==1.33.0
+python-dotenv==1.2.1

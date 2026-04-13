@@ -2,6 +2,7 @@ __pycache__/
 *.pyc
 .idea
 *.xml
+.env
 ../fk_job/.env_ccc
 .env_copy
 .claude/skills/gstack/

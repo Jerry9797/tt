@@ -1,0 +1,9 @@
+services:
+  telemetry:
+    image: grafana/otel-lgtm:latest
+    container_name: tt-v2-telemetry
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+      - "4317:4317"
+      - "4318:4318"

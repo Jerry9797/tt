@@ -30,3 +30,19 @@ Key routing rules:
 - Architecture review → invoke plan-eng-review
 - Save progress, checkpoint, resume → invoke checkpoint
 - Code quality, health check → invoke health
+
+## Python 环境
+
+本项目始终使用 `.venv/bin/python` 执行 Python 命令（不要用 `python` 或 `python3`）。
+venv 由 `uv` 管理。安装包：`uv pip install <包名> --python .venv/bin/python`。
+
+## 网络代理
+
+下载依赖或访问外部网络时，先设置代理：
+```bash
+export https_proxy=http://127.0.0.1:7890 http_proxy=http://127.0.0.1:7890 all_proxy=socks5://127.0.0.1:7890
+```
+
+## 回复语言
+
+始终用中文回复用户。
